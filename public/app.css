@@ -45,7 +45,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 .gefahr { color: var(--rot); }
 
 label.feld { display: block; font-size: 13px; color: var(--leise); margin: 10px 0 4px; }
-input[type=text], input[type=password], input[type=number], input[type=date], textarea {
+input:not([type]), input[type=text], input[type=email], input[type=password], input[type=number], input[type=date], textarea {
   width: 100%; padding: 9px 11px; border: 1px solid var(--linie); border-radius: 9px; background: var(--bg); }
 textarea { min-height: 96px; resize: vertical; }
 input:focus, textarea:focus { outline: 2px solid var(--akzent); outline-offset: 1px; }
@@ -98,3 +98,4 @@ details.transkript p { white-space: pre-wrap; margin: 6px 0 0; padding: 8px 10px
 .status-liste { font-size: 14px; }
 .status-liste div { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--linie); gap: 12px; }
 .ok { color: var(--gruen); } .nein { color: var(--rot); }
+[hidden] { display: none !important; }

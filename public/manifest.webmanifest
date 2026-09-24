@@ -1,6 +1,6 @@
 {
-  "name": "A²O Ankauf",
-  "short_name": "A²O Ankauf",
+  "name": "A²O Immo-Rechner",
+  "short_name": "Immo-Rechner",
   "description": "Ankaufskalkulation und FixFlip-Pro-Rechner aus Exposés, Mappen und WhatsApp",
   "start_url": "/",
   "scope": "/",

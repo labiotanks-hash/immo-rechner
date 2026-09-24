@@ -1,4 +1,4 @@
-// A²O Ankauf — Web-App für Ankaufskalkulation und FixFlip-Pro-Rechner über die Claude API.
+// A²O Immo-Rechner — Web-App für Ankaufskalkulation und FixFlip-Pro-Rechner über die Claude API.
 import express from "express";
 import multer from "multer";
 import JSZip from "jszip";
@@ -19,17 +19,24 @@ import { originalBuildVorhanden } from "./lib/render/rechner.js";
 import { chromePfad } from "./lib/render/pdf.js";
 import { claude } from "./lib/claude.js";
 import {
-  angemeldet, nurAngemeldet, passwortRichtig, setzeSitzung, beendeSitzung, loginGesperrt, loginFehlversuch,
+  angemeldet, nurAngemeldet, nurAdmin, emailAusSupabaseToken, setzeSitzung, beendeSitzung, loginGesperrt, loginFehlversuch,
 } from "./lib/auth.js";
+import { ladeZugang, darfRein, zugangsliste, fuegeHinzu, entferne } from "./lib/zugang.js";
 
-if (!config.appPassword || !config.sessionSecret) {
-  if (process.env.UNSICHER_OHNE_LOGIN !== "1") {
-    console.error("APP_PASSWORD und SESSION_SECRET müssen gesetzt sein (siehe .env.example).");
-    process.exit(1);
-  }
+if (config.ohneLogin) {
   console.warn("⚠ Ohne Login gestartet (UNSICHER_OHNE_LOGIN=1) — nur lokal verwenden.");
   config.sessionSecret ||= "lokal";
+} else {
+  const fehlt = [
+    ["SESSION_SECRET", config.sessionSecret], ["SUPABASE_URL", config.supabaseUrl],
+    ["SUPABASE_PUBLISHABLE_KEY", config.supabaseKey], ["ADMIN_EMAILS", config.adminEmails.length],
+  ].filter(([, v]) => !v).map(([k]) => k);
+  if (fehlt.length) {
+    console.error(`Bitte in .env setzen: ${fehlt.join(", ")} (siehe .env.example).`);
+    process.exit(1);
+  }
 }
+await ladeZugang();
 
 const app = express();
 app.set("trust proxy", 1);
@@ -51,18 +58,41 @@ const dateiname = (f) => Buffer.from(f.originalname, "latin1").toString("utf8");
 const asyncRoute = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 // ── Anmeldung ───────────────────────────────────────────────────────────────
-app.post("/api/login", (req, res) => {
-  if (loginGesperrt(req.ip)) return res.status(429).json({ fehler: "Zu viele Versuche — bitte 15 Minuten warten." });
-  if (!passwortRichtig(String(req.body?.passwort || ""))) {
-    loginFehlversuch(req.ip);
-    return res.status(401).json({ fehler: "Passwort falsch." });
-  }
-  setzeSitzung(res);
-  res.json({ ok: true });
+// Für den Browser: womit er sich bei Supabase meldet (alles öffentliche Werte)
+app.get("/api/konfig", (req, res) => {
+  res.json({ supabaseUrl: config.supabaseUrl, supabaseKey: config.supabaseKey, ohneLogin: config.ohneLogin });
 });
+
+// Supabase-Token gegen eigenes Sitzungs-Cookie tauschen
+app.post("/api/sitzung", asyncRoute(async (req, res) => {
+  if (loginGesperrt(req.ip)) return res.status(429).json({ fehler: "Zu viele Versuche — bitte 15 Minuten warten." });
+  const email = await emailAusSupabaseToken(req.body?.token);
+  if (!email) {
+    loginFehlversuch(req.ip);
+    return res.status(401).json({ fehler: "Der Anmeldelink ist abgelaufen oder ungültig. Bitte neu anfordern." });
+  }
+  if (!darfRein(email)) {
+    loginFehlversuch(req.ip);
+    return res.status(403).json({ fehler: `${email} hat noch keinen Zugang zum Immo-Rechner. Bitte bei A²O melden.` });
+  }
+  setzeSitzung(res, email);
+  res.json({ ok: true, email });
+}));
 app.post("/api/logout", (req, res) => { beendeSitzung(res); res.json({ ok: true }); });
 
 app.use("/api", nurAngemeldet);
+
+app.get("/api/ich", (req, res) => res.json(req.nutzer));
+
+// ── Zugang (nur Admins) ─────────────────────────────────────────────────────
+app.get("/api/zugang", nurAdmin, (req, res) => res.json(zugangsliste()));
+app.post("/api/zugang", nurAdmin, asyncRoute(async (req, res) => {
+  res.json(await fuegeHinzu(req.body?.email, req.body?.name, req.nutzer.email));
+}));
+app.delete("/api/zugang/:email", nurAdmin, asyncRoute(async (req, res) => {
+  res.json(await entferne(req.params.email));
+}));
+
 
 app.get("/api/status", asyncRoute(async (req, res) => {
   res.json({
@@ -196,7 +226,7 @@ app.get("/api/objekte/:id/zip", asyncRoute(async (req, res) => {
 app.get("/api/einstellungen", asyncRoute(async (req, res) => res.json(await ladeEinstellungen())));
 app.put("/api/einstellungen", asyncRoute(async (req, res) => res.json(await speichereEinstellungen(req.body || {}))));
 
-// ── Teilen aus WhatsApp (Android: App installieren, dann „Teilen → A²O Ankauf“) ──
+// ── Teilen aus WhatsApp (Android: App installieren, dann „Teilen → A²O Immo-Rechner“) ──
 app.post("/teilen", (req, res, next) => (angemeldet(req) ? next() : res.redirect(303, "/?geteilt=anmelden")),
   upload.array("dateien"), asyncRoute(async (req, res) => {
   const text = [req.body?.title, req.body?.text, req.body?.url].filter(Boolean).join("\n").trim();
@@ -221,7 +251,7 @@ app.use((err, req, res, _next) => {
 await markiereUnterbrocheneLaeufe((await listeObjekte()).map((o) => o.id));
 
 app.listen(config.port, () => {
-  console.log(`A²O Ankauf läuft auf http://localhost:${config.port}`);
+  console.log(`A²O Immo-Rechner läuft auf http://localhost:${config.port}`);
   console.log(`  Modell ${config.model} · Rechenkern ${engine().quelle} · Transkription ${transkriptionAktiv() ? "an" : "aus"} · PDF ${chromePfad() ? "an" : "AUS (Chromium fehlt)"}`);
 });
 

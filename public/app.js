@@ -1,6 +1,7 @@
 // Oberfläche ohne Build-Schritt: Hash-Routing, DOM-Bausteine, Server-Sent Events.
 const app = document.getElementById("app");
 let offeneQuelle = null; // laufende EventSource der Objektseite
+let ich = null; // { email, admin }
 
 // ── Helfer ──────────────────────────────────────────────────────────────────
 // replaceChildren ohne null/false und mit verschachtelten Listen
@@ -25,7 +26,7 @@ async function api(pfad, optionen = {}) {
   const o = { ...optionen, headers: { ...(optionen.body && !(optionen.body instanceof FormData) ? { "Content-Type": "application/json" } : {}), ...optionen.headers } };
   if (o.body && !(o.body instanceof FormData) && typeof o.body !== "string") o.body = JSON.stringify(o.body);
   const r = await fetch(pfad, o);
-  if (r.status === 401 && pfad !== "/api/login") { zeigeLogin(); throw new Error("Bitte anmelden."); }
+  if (r.status === 401 && pfad !== "/api/sitzung") { zeigeLogin(); throw new Error("Bitte anmelden."); }
   const daten = r.headers.get("content-type")?.includes("json") ? await r.json() : null;
   if (!r.ok) throw new Error(daten?.fehler || `Fehler ${r.status}`);
   return daten;
@@ -57,24 +58,97 @@ function navAktiv() {
 }
 
 // ── Anmeldung ───────────────────────────────────────────────────────────────
-function zeigeLogin(meldung) {
+// Wie bei BauDoc: Supabase schickt Link + Code per E-Mail, nur an eingeladene Adressen.
+// Das Supabase-Token geht einmal an /api/sitzung, danach gilt unser eigenes Cookie.
+let konfig = null;
+async function ladeKonfig() { return (konfig ||= await (await fetch("/api/konfig")).json()); }
+
+async function supabase(pfad, body) {
+  const k = await ladeKonfig();
+  const r = await fetch(`${k.supabaseUrl}/auth/v1/${pfad}`, {
+    method: "POST", headers: { apikey: k.supabaseKey, "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  const daten = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const code = daten.error_code || daten.code || "";
+    if (code === "otp_disabled" || code === "signup_disabled" || /signups? not allowed/i.test(daten.msg || daten.message || ""))
+      throw new Error("Für diese Adresse gibt es noch keinen Zugang. Bitte bei A²O melden.");
+    if (code === "over_email_send_rate_limit" || r.status === 429) throw new Error("Gerade wurden zu viele E-Mails verschickt — bitte in einer Minute noch einmal.");
+    if (code === "otp_expired") throw new Error("Der Code ist abgelaufen oder falsch. Bitte neu anfordern.");
+    throw new Error(daten.msg || daten.message || daten.error_description || `Anmeldung fehlgeschlagen (${r.status})`);
+  }
+  return daten;
+}
+
+async function tauscheToken(token) {
+  await api("/api/sitzung", { method: "POST", body: { token } });
+}
+
+// Rückkehr über den Link aus der E-Mail: #access_token=… bzw. #error=…
+async function linkAusEmail() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  history.replaceState(null, "", location.pathname);
+  if (h.has("error")) {
+    zeigeLogin(h.get("error_code") === "otp_expired" ? "Der Link ist abgelaufen oder wurde schon benutzt — bitte neu anfordern." : (h.get("error_description") || "Anmeldung fehlgeschlagen."), true);
+    return;
+  }
+  try { await tauscheToken(h.get("access_token")); history.replaceState(null, "", "/#/"); route(); }
+  catch (err) { zeigeLogin(err.message, true); }
+}
+
+function zeigeLogin(meldung, istFehler = false) {
+  ich = null;
+  document.getElementById("nav-zugang").hidden = true;
   if (offeneQuelle) { offeneQuelle.close(); offeneQuelle = null; }
   document.getElementById("abmelden").hidden = true;
-  const fehler = el("div");
-  const pw = el("input", { type: "password", id: "pw", autocomplete: "current-password", required: true });
+  const fehler = el("div", {}, istFehler && meldung ? fehlerbox(meldung) : null);
+  const email = el("input", { type: "email", id: "email", autocomplete: "email", inputmode: "email", required: true });
+  try { email.value = localStorage.getItem("a2o_email") || ""; } catch {}
+  const knopf = el("button", { class: "knopf", type: "submit" }, "Anmeldelink schicken");
   const form = el("form", { class: "karte login", onsubmit: async (e) => {
     e.preventDefault();
     setze(fehler);
-    try { await api("/api/login", { method: "POST", body: { passwort: pw.value } }); route(); }
-    catch (err) { fehler.append(fehlerbox(err.message)); }
+    knopf.disabled = true;
+    const adresse = email.value.trim().toLowerCase();
+    try {
+      await supabase(`otp?redirect_to=${encodeURIComponent(location.origin + "/")}`, { email: adresse, create_user: false });
+      try { localStorage.setItem("a2o_email", adresse); } catch {}
+      zeigeCode(adresse);
+    } catch (err) { fehler.append(fehlerbox(err.message)); knopf.disabled = false; }
   } },
   el("h1", {}, "Anmelden"),
-  el("p", { class: "unter" }, meldung || "Team-Passwort für die A²O-Ankaufskalkulation."),
+  el("p", { class: "unter" }, !istFehler && meldung ? meldung : "Mit deiner E-Mail-Adresse — du bekommst einen Anmeldelink. Zugang nur auf Einladung."),
   fehler,
-  el("label", { class: "feld", for: "pw" }, "Passwort"), pw,
-  el("div", { style: "margin-top:14px" }, el("button", { class: "knopf", type: "submit" }, "Anmelden")));
+  el("label", { class: "feld", for: "email" }, "E-Mail"), email,
+  el("div", { style: "margin-top:14px" }, knopf));
   setze(app, form);
-  pw.focus();
+  email.focus();
+}
+
+// Nach dem Versand: Link in der E-Mail anklicken — oder den Code eintippen
+// (nötig z. B. in der Homescreen-App auf dem iPhone, die ihre eigenen Cookies hat)
+function zeigeCode(adresse) {
+  const fehler = el("div");
+  const code = el("input", { id: "code", inputmode: "numeric", autocomplete: "one-time-code", pattern: "[0-9]{6,10}", maxlength: "10", required: true });
+  const form = el("form", { class: "karte login", onsubmit: async (e) => {
+    e.preventDefault();
+    setze(fehler);
+    try {
+      const s = await supabase("verify", { type: "email", email: adresse, token: code.value.trim() });
+      await tauscheToken(s.access_token);
+      history.replaceState(null, "", "/#/");
+      route();
+    } catch (err) { fehler.append(fehlerbox(err.message)); }
+  } },
+  el("h1", {}, "E-Mail ist unterwegs"),
+  el("p", { class: "unter" }, `An ${adresse}. Öffne den Link in der E-Mail — oder gib hier den Code aus der E-Mail ein.`),
+  fehler,
+  el("label", { class: "feld", for: "code" }, "Code"), code,
+  el("div", { class: "zeile", style: "margin-top:14px" },
+    el("button", { class: "knopf", type: "submit" }, "Anmelden"),
+    el("button", { class: "leise", type: "button", onclick: () => zeigeLogin() }, "Andere Adresse")));
+  setze(app, form);
+  code.focus();
 }
 
 // ── Objektliste ─────────────────────────────────────────────────────────────
@@ -360,23 +434,58 @@ async function zeigeEinstellungen() {
   setze(app, el("h1", {}, "Einstellungen"), el("div", { class: "raster" }, form, statusKarte));
 }
 
+// ── Zugang (nur Admins) ─────────────────────────────────────────────────────
+async function zeigeZugang() {
+  const liste = el("div", { class: "status-liste" });
+  const fehler = el("div");
+  const zeichne = (personen) => setze(liste, personen.map((p) => el("div", {},
+    el("span", {}, p.name ? `${p.name} · ${p.email}` : p.email),
+    p.admin ? el("span", { class: "hinweis" }, "Admin (.env)")
+      : el("button", { class: "leise", type: "button", onclick: async () => {
+        if (!confirm(`${p.email} den Zugang entziehen?`)) return;
+        try { zeichne(await api(`/api/zugang/${encodeURIComponent(p.email)}`, { method: "DELETE" })); }
+        catch (err) { setze(fehler, fehlerbox(err.message)); }
+      } }, "Entfernen"))));
+  zeichne(await api("/api/zugang"));
+  const email = el("input", { type: "email", id: "neu-email", required: true });
+  const name = el("input", { id: "neu-name", placeholder: "optional" });
+  const form = el("form", { class: "karte", onsubmit: async (e) => {
+    e.preventDefault();
+    setze(fehler);
+    try { zeichne(await api("/api/zugang", { method: "POST", body: { email: email.value, name: name.value } })); email.value = ""; name.value = ""; }
+    catch (err) { fehler.append(fehlerbox(err.message)); }
+  } },
+  el("h2", {}, "Person freischalten"),
+  el("p", { class: "hinweis" }, "Alle Freigeschalteten sehen alle Objekte. Die Anmeldung läuft über das Supabase-Konto wie bei BauDoc — wer dort noch kein Konto hat, im Supabase-Dashboard unter Authentication → Users → „Invite user“ einladen."),
+  fehler,
+  el("label", { class: "feld", for: "neu-email" }, "E-Mail"), email,
+  el("label", { class: "feld", for: "neu-name" }, "Name"), name,
+  el("div", { style: "margin-top:14px" }, el("button", { class: "knopf", type: "submit" }, "Freischalten")));
+  setze(app, el("h1", {}, "Zugang"), el("div", { class: "raster" }, form, el("section", { class: "karte" }, el("h2", {}, "Wer hat Zugang"), liste)));
+}
+
 // ── Routing ─────────────────────────────────────────────────────────────────
 async function route() {
+  if (/(^#|&)(access_token|error)=/.test(location.hash)) return linkAusEmail();
   navAktiv();
   if (offeneQuelle && !location.hash.startsWith("#/objekt/")) { offeneQuelle.close(); offeneQuelle = null; }
   const h = location.hash || "#/";
   try {
+    ich ||= await api("/api/ich");
     document.getElementById("abmelden").hidden = false;
+    document.getElementById("abmelden").title = `Angemeldet als ${ich.email}`;
+    document.getElementById("nav-zugang").hidden = !ich.admin;
     const m = h.match(/^#\/objekt\/([A-Za-z0-9_-]+)/);
     if (m) await zeigeObjekt(m[1]);
     else if (h === "#/einstellungen") await zeigeEinstellungen();
+    else if (h === "#/zugang") await zeigeZugang();
     else await zeigeListe();
   } catch (err) {
     if (err.message !== "Bitte anmelden.") setze(app, fehlerbox(err.message));
   }
 }
 
-document.getElementById("abmelden").addEventListener("click", async () => { await api("/api/logout", { method: "POST" }); zeigeLogin(); });
+document.getElementById("abmelden").addEventListener("click", async () => { await api("/api/logout", { method: "POST" }); ich = null; zeigeLogin(); });
 window.addEventListener("hashchange", route);
 if (new URLSearchParams(location.search).get("geteilt") === "anmelden") zeigeLogin("Bitte anmelden und dann erneut aus WhatsApp teilen.");
 else route();
