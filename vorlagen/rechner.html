@@ -1,0 +1,809 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fix &amp; Flip Check — __TITEL__</title>
+<style>
+:root {
+  --bg: 210 20% 97%; --card: 0 0% 100%; --foreground: 210 20% 12%; --muted: 210 16% 93%;
+  --muted-foreground: 210 9% 42%; --border: 210 14% 86%; --primary: 202 57% 27%;
+  --primary-foreground: 0 0% 100%; --destructive: 0 62% 45%;
+  --gruen: 142 55% 32%; --gelb: 40 80% 38%; --rot: 0 62% 45%;
+}
+html[data-theme="dunkel"] {
+  --bg: 210 18% 9%; --card: 210 16% 13%; --foreground: 210 15% 92%; --muted: 210 14% 18%;
+  --muted-foreground: 210 9% 64%; --border: 210 12% 24%; --primary: 199 55% 55%;
+  --primary-foreground: 210 30% 10%; --destructive: 0 70% 62%;
+  --gruen: 142 50% 55%; --gelb: 42 85% 60%; --rot: 0 70% 64%;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: hsl(var(--bg)); color: hsl(var(--foreground));
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-variant-numeric: tabular-nums; }
+.app-header { display: flex; align-items: center; gap: 14px; padding: 12px 18px; background: hsl(var(--card));
+  border-bottom: 1px solid hsl(var(--border)); position: sticky; top: 0; z-index: 5; }
+.app-header .marke { font-size: 11px; letter-spacing: .14em; color: hsl(var(--muted-foreground)); }
+.app-header h1 { font-size: 17px; margin: 0; }
+.app-header .sub { font-size: 12px; color: hsl(var(--muted-foreground)); }
+.app-header .rechts { margin-left: auto; display: flex; gap: 8px; }
+button { font: inherit; }
+.knopf { padding: 7px 13px; border-radius: 8px; cursor: pointer; border: 1px solid hsl(var(--border));
+  background: hsl(var(--card)); color: hsl(var(--foreground)); font-size: 13px; }
+.knopf:hover { background: hsl(var(--muted)); }
+.knopf.aktiv { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+main { max-width: 1320px; margin: 0 auto; padding: 14px 16px 60px; }
+#a2oDocBar { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+.card { background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
+.card h2 { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: hsl(var(--muted-foreground)); margin: 0 0 10px; }
+.feld { display: grid; grid-template-columns: minmax(0, 1fr) 128px; gap: 4px 10px; align-items: center; margin: 7px 0; }
+.feld label { font-size: 13px; }
+.feld .quelle { grid-column: 1 / -1; font-size: 11px; color: hsl(var(--muted-foreground)); margin-top: -3px; }
+.feld input[type=number] { width: 100%; padding: 5px 7px; border: 1px solid hsl(var(--border)); border-radius: 7px;
+  background: hsl(var(--bg)); color: hsl(var(--foreground)); font: inherit; text-align: right; }
+.feld input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: hsl(var(--primary)); margin: 0; }
+.feld.schalter { grid-template-columns: 1fr auto; }
+.feld.geschaetzt label::after { content: " ●"; color: hsl(var(--gelb)); font-size: 10px; }
+.einheit { font-size: 11px; color: hsl(var(--muted-foreground)); }
+.banner { border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; color: #fff; }
+.banner.gruen { background: hsl(142 50% 30%); } .banner.gelb { background: hsl(38 75% 38%); } .banner.rot { background: hsl(0 58% 42%); }
+.banner .gross { font-size: 30px; font-weight: 700; letter-spacing: -.02em; }
+.banner .klein { font-size: 13px; opacity: .92; }
+.kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.kpi { background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 10px 12px; }
+.kpi .k { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: hsl(var(--muted-foreground)); }
+.kpi .v { font-size: 21px; font-weight: 700; margin-top: 2px; }
+.kpi .h { font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+.kpis6 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+.kpis6 .kpi .v { font-size: 15px; }
+table.gv { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.gv td { padding: 4px 4px; border-bottom: 1px solid hsl(var(--border)); }
+table.gv td.n { text-align: right; white-space: nowrap; }
+table.gv tr.zs td { font-weight: 600; }
+table.gv tr.su td { font-weight: 700; border-top: 2px solid hsl(var(--foreground)); border-bottom: none; }
+.balken { display: flex; height: 22px; border-radius: 6px; overflow: hidden; border: 1px solid hsl(var(--border)); margin: 6px 0; }
+.legende { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11.5px; color: hsl(var(--muted-foreground)); }
+.legende i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; }
+.vkknoepfe { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 8px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 6px; vertical-align: 1px; }
+.dot.gruen { background: hsl(var(--gruen)); } .dot.gelb { background: hsl(var(--gelb)); } .dot.rot { background: hsl(var(--rot)); }
+.warnung { border-left: 3px solid hsl(var(--destructive)); padding: 8px 12px; background: hsl(var(--muted)); border-radius: 0 8px 8px 0; margin-bottom: 12px; font-size: 13px; }
+#standaloneMappe { margin: 0 0 14px; padding: 12px 14px; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card)); }
+#standaloneMappe .m-kopf { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: hsl(var(--muted-foreground)); margin-bottom: 8px; }
+#standaloneMappe .m-hero { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+#standaloneMappe .m-hero .zahl { font-size: 24px; font-weight: 700; }
+#standaloneMappe .m-hero .delta { font-size: 12px; color: hsl(var(--muted-foreground)); }
+#standaloneMappe table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+#standaloneMappe td { padding: 3px 6px 3px 0; border-bottom: 1px solid hsl(var(--border)); }
+#standaloneMappe td.n { text-align: right; white-space: nowrap; }
+#standaloneMappe .m-abschnitt { font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: hsl(var(--muted-foreground)); margin: 10px 0 3px; }
+#standaloneMappe .m-fuss { font-size: 10.5px; color: hsl(var(--muted-foreground)); margin-top: 8px; }
+#standaloneMappe #mappeDruck { margin-top: 10px; }
+#standaloneMappe #mappeDruck > summary { cursor: pointer; font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: hsl(var(--destructive)); padding: 3px 0; }
+#standaloneMappe #mappeDruck[open] { border: 1px solid hsl(var(--destructive)); border-radius: 8px; padding: 4px 8px; }
+#a2oDoc { position: fixed; inset: 0; z-index: 9999; overflow: auto; background: #fff; color: #1a1a1a; padding: 0 0 60px; }
+#a2oDoc .doc-bar { position: sticky; top: 0; background: #f4f6f9; border-bottom: 1px solid #dde; padding: 8px 14px; display: flex; gap: 8px; align-items: center; font-size: 13px; color: #556; flex-wrap: wrap; }
+#a2oDoc .doc-bar button { padding: 6px 14px; border-radius: 7px; cursor: pointer; border: 1px solid #bbc; background: #fff; font-size: 13px; }
+#a2oDoc .doc-blatt { max-width: 820px; margin: 0 auto; padding: 26px 30px; font: 13.5px/1.5 -apple-system, "Helvetica Neue", Arial, sans-serif; }
+#a2oDoc h1 { font-size: 20px; margin: 0 0 4px; }
+#a2oDoc h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: #667; margin: 22px 0 8px; border-bottom: 1px solid #dde; padding-bottom: 4px; }
+#a2oDoc table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+#a2oDoc td { padding: 3px 6px 3px 0; border-bottom: 1px solid #f0f0f0; }
+#a2oDoc td.n { text-align: right; white-space: nowrap; }
+#a2oDoc tr.zs td { font-weight: 600; border-top: 1px solid #ccc; }
+#a2oDoc tr.su td { font-weight: 700; border-top: 2px solid #1a1a1a; border-bottom: none; }
+#a2oDoc tr.kl td { color: #778; font-size: 12px; border-bottom: none; }
+#a2oDoc .hero { background: #f4f6f9; border-radius: 8px; padding: 14px 16px; margin: 12px 0; }
+#a2oDoc .hero .gross { font-size: 27px; font-weight: 700; }
+#a2oDoc .hero .klein { font-size: 12.5px; color: #556; }
+#a2oDoc .fuss { font-size: 11.5px; color: #778; margin-top: 22px; border-top: 1px solid #dde; padding-top: 8px; }
+#a2oDoc .fuellen { color: #b8860b; }
+#a2oDoc [contenteditable]:focus { outline: 2px solid #9cf; outline-offset: 3px; }
+.fussnote { font-size: 11.5px; color: hsl(var(--muted-foreground)); margin-top: 18px; }
+@media print {
+  body > *:not(#a2oDoc) { display: none !important; }
+  #a2oDoc { position: static; padding: 0; }
+  #a2oDoc .doc-bar { display: none; }
+  #a2oDoc .doc-blatt { max-width: none; padding: 0; font-size: 10.5pt; }
+  #a2oDoc h2 { page-break-after: avoid; }
+  #a2oDoc table { page-break-inside: avoid; }
+  @page { size: A4; margin: 16mm 14mm; }
+}
+</style>
+</head>
+<body>
+<header class="app-header">
+  <div>
+    <div class="marke">A²O ARCHITEKTEN</div>
+    <h1>Fix &amp; Flip Pro</h1>
+    <div class="sub" id="kopfSub"></div>
+  </div>
+  <div class="rechts">
+    <button class="knopf" id="zuruecksetzen" title="Alle Regler auf den Stand der Kalkulation">↺ Ausgangswerte</button>
+    <button class="knopf" id="dunkel">🌙</button>
+  </div>
+</header>
+<main>
+  <div id="a2oDocBar">
+    <button class="knopf" data-a2odoc="bank">Bankvorlage erzeugen</button>
+    <button class="knopf" data-a2odoc="makler">Verhandlungsgrundlage für den Makler</button>
+  </div>
+  <div class="layout">
+    <section id="links"></section>
+    <section id="rechts"></section>
+  </div>
+  <div class="fussnote" id="fussnote"></div>
+</main>
+
+<script>
+/* Rechenkern — identisch mit der Ankaufskalkulation (lib/fixflip.js) */
+__ENGINE__
+</script>
+<script>
+/* [Standalone] erzeugt von a2o-ankauf am __DATUM__ */
+const DATEN = __DATEN_JSON__;
+const STANDALONE_EXPOSE = DATEN.expose || {};
+const STANDALONE_KOSTEN = null;
+const START_INPUTS = { ...DEFAULT_INPUTS, ...DATEN.inputs, frischstellung: false };
+const GESCHAETZT = new Set(DATEN.inputs._geschaetzt || []);
+const PROFIL_KEY = "a2o_fixflip_profil";
+
+function ladeProfil() {
+  let gespeichert = {};
+  try { gespeichert = JSON.parse(localStorage.getItem(PROFIL_KEY) || "{}"); } catch (e) { gespeichert = {}; }
+  // Darlehen und Zins kommen aus der Kalkulation; EK und Kontokorrent sind das eigene
+  // Investorenprofil und gelten — einmal hier geändert — für alle Rechner in diesem Browser.
+  const eigenes = {};
+  ["ekVerfuegbar", "kkRahmen", "kkZins"].forEach((k) => { if (typeof gespeichert[k] === "number") eigenes[k] = gespeichert[k]; });
+  return { ...DEFAULT_PROFIL, ...DATEN.profil, ...eigenes };
+}
+let PROFIL = ladeProfil();
+function speichereProfil() {
+  try { localStorage.setItem(PROFIL_KEY, JSON.stringify({ ekVerfuegbar: PROFIL.ekVerfuegbar, kkRahmen: PROFIL.kkRahmen, kkZins: PROFIL.kkZins })); } catch (e) { /* file:// ohne Storage */ }
+}
+
+const state = { inputs: { ...START_INPUTS } };
+
+const fmtNum = (x) => (x == null || !isFinite(x)) ? "–" : Math.round(x).toLocaleString("de-DE");
+const fmtPct = (x) => (x == null || !isFinite(x)) ? "–" : x.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " %";
+const fmtEur = (x) => fmtNum(x) + " €";
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* Bearbeitungsgebühr 1,5 % auf die gezogene Finanzierung — wie standaloneGebuehrEinhaengen() */
+const MAPPE_ZIELMARGE = 0.20;
+const MAPPE_STEUERSATZ = 0.30;
+const MAPPE_BW_ABSCHLAG = 0.85;
+const MAPPE_BEARBEITUNGSGEBUEHR = (DATEN.bearbeitungsgebuehrProzent == null ? 1.5 : DATEN.bearbeitungsgebuehrProzent) / 100;
+const rechne = mitBearbeitungsgebuehr(berechneFixFlip, MAPPE_BEARBEITUNGSGEBUEHR);
+function berechne(i) { return rechne(i, PROFIL); }
+
+/* ── Eingabemaske ─────────────────────────────────────────────────────── */
+const FELDER = [
+  { karte: "Kaufdaten", felder: [
+    ["kaufpreis", "Kaufpreis", "€", 0, 5000000, 5000],
+    ["wohnflaeche", "Wohnfläche", "m²", 0, 3000, 1],
+    ["grunderwerbsteuerSatz", "Grunderwerbsteuer", "%", 0, 7, 0.5],
+    ["notarGrundbuchSatz", "Notar / Grundbuch", "%", 0, 4, 0.1],
+    ["maklerKaufSatz", "Makler beim Kauf", "%", 0, 7.14, 0.01],
+    ["provisionenSonstige", "Sonstige Provisionen", "€", 0, 200000, 500],
+  ]},
+  { karte: "Baumaßnahmen", anker: "sanierung", felder: [
+    ["renovierungAktiv", "Renovierung / Maßnahme", "schalter"],
+    ["renovierungPauschale", "Pauschale", "€", 0, 1000000, 1000],
+    ["sanierungAktiv", "Sanierung je m²", "schalter"],
+    ["sanierungskostenM2", "Sanierungskosten", "€/m²", 0, 3000, 10],
+    ["kfwFoerderungProzent", "KfW-Förderung", "%", 0, 45, 1],
+    ["baunebenkostenProzent", "Baunebenkosten", "%", 0, 25, 1],
+    ["unvorhergesehenesProzent", "Unvorhergesehenes", "%", 0, 30, 1],
+  ]},
+  { karte: "Laufende Kosten und Miete", felder: [
+    ["hausgeldProMonat", "Hausgeld / Monat", "€", 0, 5000, 10],
+    ["objektkostenProMonat", "Objektkosten / Monat", "€", 0, 5000, 10],
+    ["sonderumlage", "Sonderumlage", "€", 0, 200000, 500],
+    ["mieteNettoProMonat", "Mieteinnahmen netto / Monat", "€", 0, 50000, 10],
+  ]},
+  { karte: "Verkauf", vk: true, felder: [
+    ["zielverkaufspreis", "Zielverkaufspreis", "€", 0, 8000000, 5000],
+    ["garageMitverkauf", "Garage / Stellplätze mitverkaufen", "schalter"],
+    ["garagenpreis", "Stellplatz-Erlös", "€", 0, 300000, 1000],
+    ["maklerkosten", "Makler beim Verkauf", "%", 0, 7.14, 0.01],
+    ["notarVerkauf", "Notar beim Verkauf", "%", 0, 2, 0.1],
+    ["haltedauerMonate", "Haltedauer bis Verkauf", "Mon.", 1, 48, 1],
+    ["finanzierungsdauerMonate", "Finanzierungsdauer (Vollmonate Zins)", "Mon.", 0, 48, 1],
+  ]},
+  { karte: "Finanzierung (Investorenprofil)", profil: true, felder: [
+    ["ekVerfuegbar", "Eigenkapital verfügbar", "€", 0, 5000000, 5000],
+    ["kkRahmen", "Kontokorrent-Rahmen", "€", 0, 2000000, 5000],
+    ["kkZins", "Kontokorrent-Zins", "%", 0, 15, 0.1],
+    ["objektdarlehenAktiv", "Objektdarlehen", "schalter"],
+    ["objektdarlehenLtv", "Darlehen vom Kaufpreis (LTV)", "%", 0, 100, 1],
+    ["objektdarlehenZins", "Darlehenszins", "%", 0, 12, 0.05],
+  ]},
+];
+
+function feldHtml(def, ziel) {
+  const [key, label, einheit, min, max, step] = def;
+  const wert = ziel[key];
+  const gesch = GESCHAETZT.has(key) ? " geschaetzt" : "";
+  if (einheit === "schalter") {
+    return '<div class="feld schalter' + gesch + '"><label for="f_' + key + '">' + label + '</label>'
+      + '<input type="checkbox" id="f_' + key + '" data-key="' + key + '"' + (wert ? " checked" : "") + '></div>';
+  }
+  const rmax = Math.max(max, Number(wert) || 0);
+  return '<div class="feld' + gesch + '"><label for="f_' + key + '">' + label + ' <span class="einheit">' + einheit + '</span></label>'
+    + '<input type="number" id="f_' + key + '" data-key="' + key + '" step="' + step + '" value="' + (Number(wert) || 0) + '">'
+    + '<input type="range" data-key="' + key + '" min="' + min + '" max="' + rmax + '" step="' + step + '" value="' + (Number(wert) || 0) + '">'
+    + (key === "zielverkaufspreis" && state.inputs.zielverkaufspreisQuelle ? '<div class="quelle">' + esc(state.inputs.zielverkaufspreisQuelle) + '</div>' : "")
+    + '</div>';
+}
+
+function renderEingabe() {
+  const links = document.getElementById("links");
+  links.innerHTML = FELDER.map((k) => {
+    const ziel = k.profil ? PROFIL : state.inputs;
+    let extra = "";
+    if (k.vk) {
+      const i = state.inputs;
+      const b = [["vkGering", "gering"], ["vkMitte", "mitte"], ["vkHoch", "hoch"]].filter((x) => i[x[0]]);
+      extra = '<div class="vkknoepfe">'
+        + b.map((x) => '<button class="knopf' + (i.zielverkaufspreis === i[x[0]] ? " aktiv" : "") + '" data-vk="' + x[0] + '">'
+          + x[1] + " " + fmtNum(i[x[0]] / 1000) + " T€</button>").join("")
+        + '<button class="knopf" data-vk="breakeven" title="Verkaufspreis mit Ergebnis 0">Break-even</button>'
+        + '<button class="knopf" data-vk="ziel20" title="Verkaufspreis für 20 % Marge auf GIK">20 % Marge</button></div>';
+    }
+    return '<div class="card"' + (k.anker ? ' data-anker="' + k.anker + '"' : "") + '><h2>' + k.karte + '</h2>' + extra
+      + k.felder.map((f) => feldHtml(f, ziel)).join("") + '</div>';
+  }).join("");
+  standaloneMappePlatzieren();
+}
+
+function renderErgebnis() {
+  const i = state.inputs;
+  const e = berechne(i);
+  const marge = e.roiGesamt;
+  const amp = ampel(marge);
+  const r = document.getElementById("rechts");
+  const teile = [
+    ["Kaufpreis", i.kaufpreis, "#1d4e6b"], ["Kaufnebenkosten", e.kaufnebenkosten + e.provisionenSonstige, "#6f95b3"],
+    ["Bau", e.sanierungNetto + e.renovierungskosten + e.baunebenkosten + e.unvorhergesehenes, "#c98b3f"],
+    ["Halten", e.hausgeldGesamt + e.objektkostenGesamt + e.sonderumlage, "#9b948c"],
+    ["Zinsen + Gebühr", e.zinsenGesamt, "#5b6570"], ["Verkaufsnebenkosten", e.verkaufsnebenkosten, "#a3a9b0"],
+  ].filter((t) => t[1] > 0);
+  const summe = teile.reduce((s, t) => s + t[1], 0) || 1;
+  const zeile = (t, v, kl) => '<tr' + (kl ? ' class="' + kl + '"' : "") + '><td>' + t + '</td><td class="n">' + v + '</td></tr>';
+  r.innerHTML = (e.finanzierbar ? "" : '<div class="warnung"><b>Nicht finanzierbar:</b> Deckungslücke ' + fmtEur(e.deckungsluecke)
+      + ' — Eigenkapital und Kontokorrent reichen nicht für die Kosten neben dem Darlehen.</div>')
+    + '<div class="banner ' + amp + '"><div class="klein">Ergebnis vor Steuern</div><div class="gross">' + fmtEur(e.bruttogewinn) + '</div>'
+    + '<div class="klein">Marge auf GIK ' + fmtPct(marge) + ' · Ampel: unter 15 % rot, 15–20 % gelb, ab 20 % grün</div></div>'
+    + '<div class="kpis">'
+    + '<div class="kpi"><div class="k">Rendite p.a. auf gebundenes Kapital</div><div class="v">' + fmtPct(e.renditeGebundenesKapitalPA) + '</div><div class="h">linear auf 12 Monate</div></div>'
+    + '<div class="kpi"><div class="k">Marge auf GIK (ROI gesamt)</div><div class="v">' + fmtPct(marge) + '<span class="dot ' + amp + '"></span></div><div class="h">Ergebnis ÷ Gesamtaufwand</div></div>'
+    + '<div class="kpi"><div class="k">Gebundenes Kapital</div><div class="v">' + fmtEur(e.gebundenesKapital) + '</div><div class="h">EK ' + fmtEur(e.ekEinsatz) + (e.kkInanspruchnahme ? ' + KK ' + fmtEur(e.kkInanspruchnahme) : "") + '</div></div>'
+    + '<div class="kpi"><div class="k">Gewinnmarge</div><div class="v">' + fmtPct(e.gewinnmarge) + '</div><div class="h">Ergebnis ÷ Verkaufserlös</div></div>'
+    + '</div>'
+    + '<div class="kpis6">'
+    + '<div class="kpi"><div class="k">Gesamtausgaben</div><div class="v">' + fmtEur(e.gesamtkosten) + '</div></div>'
+    + '<div class="kpi"><div class="k">Gewinn / m²</div><div class="v">' + fmtEur(e.gewinnProM2) + '</div></div>'
+    + '<div class="kpi"><div class="k">Eingesetztes EK</div><div class="v">' + fmtEur(e.ekEinsatz) + '</div></div>'
+    + '<div class="kpi"><div class="k">EK-Quote</div><div class="v">' + fmtPct(e.ekQuote) + '</div></div>'
+    + '<div class="kpi"><div class="k">Zinslast inkl. Gebühr</div><div class="v">' + fmtEur(e.zinsenGesamt) + '</div></div>'
+    + '<div class="kpi"><div class="k">KfW-Förderung</div><div class="v">' + fmtEur(e.kfwFoerderung) + '</div></div>'
+    + '</div>'
+    + '<div class="card"><h2>Wo das Geld hingeht</h2><div class="balken">'
+    + teile.map((t) => '<span style="width:' + (t[1] / summe * 100).toFixed(2) + '%;background:' + t[2] + '"></span>').join("")
+    + '</div><div class="legende">' + teile.map((t) => '<span><i style="background:' + t[2] + '"></i>' + t[0] + ' ' + fmtEur(t[1]) + '</span>').join("") + '</div></div>'
+    + '<div class="card"><h2>Gewinn- und Verlustrechnung</h2><table class="gv">'
+    + zeile("Kaufpreis", fmtEur(i.kaufpreis))
+    + zeile("+ Grunderwerbsteuer " + fmtPct(i.grunderwerbsteuerSatz), fmtEur(e.grunderwerbsteuer))
+    + zeile("+ Notar &amp; Grundbuch " + fmtPct(i.notarGrundbuchSatz), fmtEur(e.notarGrundbuch))
+    + zeile("+ Makler Kauf " + fmtPct(i.maklerKaufSatz), fmtEur(e.maklerKauf))
+    + (e.provisionenSonstige ? zeile("+ Sonstige Provisionen", fmtEur(e.provisionenSonstige)) : "")
+    + (e.renovierungskosten ? zeile("+ Renovierung / Maßnahme", fmtEur(e.renovierungskosten)) : "")
+    + (e.sanierungNetto ? zeile("+ Sanierung" + (e.kfwFoerderung ? " (nach KfW)" : ""), fmtEur(e.sanierungNetto)) : "")
+    + (e.baunebenkosten ? zeile("+ Baunebenkosten", fmtEur(e.baunebenkosten)) : "")
+    + (e.unvorhergesehenes ? zeile("+ Unvorhergesehenes", fmtEur(e.unvorhergesehenes)) : "")
+    + (e.hausgeldGesamt ? zeile("+ Hausgeld " + i.haltedauerMonate + " Mon.", fmtEur(e.hausgeldGesamt)) : "")
+    + (e.objektkostenGesamt ? zeile("+ Objektkosten " + i.haltedauerMonate + " Mon.", fmtEur(e.objektkostenGesamt)) : "")
+    + (e.sonderumlage ? zeile("+ Sonderumlage", fmtEur(e.sonderumlage)) : "")
+    + zeile("= Gesamtinvestition (GIK)", fmtEur(e.gesamtinvestition), "zs")
+    + zeile("+ Zinsen Objektdarlehen", fmtEur(e.zinsenObjektdarlehen))
+    + (e.zinsenKK ? zeile("+ Zinsen Kontokorrent", fmtEur(e.zinsenKK)) : "")
+    + zeile("+ Bearbeitungsgebühr " + fmtPct(MAPPE_BEARBEITUNGSGEBUEHR * 100), fmtEur(e.bearbeitungsgebuehr || 0))
+    + zeile("+ Verkaufsnebenkosten", fmtEur(e.verkaufsnebenkosten))
+    + zeile("= Gesamtaufwand bis Verkauf", fmtEur(e.gesamtkosten), "zs")
+    + zeile("Verkaufserlös" + (e.verkaufserloesGesamt !== i.zielverkaufspreis ? " inkl. Stellplätze" : ""), fmtEur(e.verkaufserloesGesamt))
+    + (e.mieteGesamt ? zeile("+ Mieteinnahmen netto (" + i.haltedauerMonate + " Mon.)", fmtEur(e.mieteGesamt)) : "")
+    + zeile("Ergebnis vor Steuern", fmtEur(e.bruttogewinn), "su")
+    + '</table></div>';
+}
+
+function render() {
+  renderEingabe();
+  renderErgebnis();
+  standaloneMappeUpdate();
+}
+
+/* Eingaben ohne Neuaufbau der Maske (sonst verliert das Feld beim Tippen den Fokus) */
+function setzeWert(key, wert, quelle) {
+  const ziel = FELDER.find((k) => k.profil && k.felder.some((f) => f[0] === key)) ? PROFIL : state.inputs;
+  ziel[key] = wert;
+  if (ziel === PROFIL) speichereProfil();
+  document.querySelectorAll('[data-key="' + key + '"]').forEach((el) => {
+    if (el === quelle) return;
+    if (el.type === "checkbox") el.checked = !!wert; else el.value = wert;
+  });
+  renderErgebnis();
+  standaloneMappeUpdate();
+}
+
+document.addEventListener("input", (ev) => {
+  const el = ev.target;
+  if (!el.dataset || !el.dataset.key) return;
+  setzeWert(el.dataset.key, el.type === "checkbox" ? el.checked : (parseFloat(el.value) || 0), el);
+});
+document.addEventListener("change", (ev) => {
+  const el = ev.target;
+  if (el.dataset && el.dataset.key && el.type === "checkbox") setzeWert(el.dataset.key, el.checked, el);
+});
+document.addEventListener("click", (ev) => {
+  const vk = ev.target.closest("[data-vk]");
+  if (vk) {
+    const i = state.inputs;
+    if (vk.dataset.vk === "breakeven") i.zielverkaufspreis = Math.ceil(verkaufspreisFuerMarge(i, PROFIL, 0, rechne) / 1000) * 1000;
+    else if (vk.dataset.vk === "ziel20") i.zielverkaufspreis = Math.ceil(verkaufspreisFuerMarge(i, PROFIL, 20, rechne) / 1000) * 1000;
+    else i.zielverkaufspreis = i[vk.dataset.vk];
+    render();
+    return;
+  }
+  const doc = ev.target.closest("[data-a2odoc]");
+  if (doc) { if (doc.dataset.a2odoc === "bank") docBank(); else docMakler(); }
+});
+document.getElementById("zuruecksetzen").addEventListener("click", () => {
+  state.inputs = { ...START_INPUTS };
+  PROFIL = { ...ladeProfil() };
+  render();
+});
+document.getElementById("dunkel").addEventListener("click", () => {
+  const h = document.documentElement;
+  h.dataset.theme = h.dataset.theme === "dunkel" ? "" : "dunkel";
+});
+
+/* ── Szenarien Halten / Renovieren / Modernisieren (aus build.py) ─────────── */
+const SZENARIO_VK_FAKTOR = { halten: 0.90, renovierung: 1.15, modernisierung: 1.25 };
+const SZENARIO_MONATE = 6;
+const SZENARIEN_WEGE = [
+  { id: "halten", label: "Halten & verkaufen" },
+  { id: "renovierung", label: "Renovieren" },
+  { id: "modernisierung", label: "Modernisieren (Reno + Sanierung)" },
+];
+let SZENARIO_AKTIV = null;
+
+function standaloneLage() {
+  return (STANDALONE_EXPOSE.a2o_check && STANDALONE_EXPOSE.a2o_check.lage_eur_m2) || null;
+}
+
+function szenarioInputs(id, basis) {
+  const lage = standaloneLage();
+  const i = { ...basis };
+  const wf = i.wohnflaeche || 0;
+  i.frischstellung = false;
+  i.haltedauerMonate = SZENARIO_MONATE;
+  i.finanzierungsdauerMonate = SZENARIO_MONATE;
+  i.baunebenkostenProzent = 0;
+  i.unvorhergesehenesProzent = 0;
+  if (id === "halten") { i.renovierungAktiv = false; i.sanierungAktiv = false; }
+  else if (id === "renovierung") { i.renovierungAktiv = true; i.sanierungAktiv = false; }
+  else { i.renovierungAktiv = true; i.sanierungAktiv = true; i.sanierungsstandard = "basic"; }
+  if (lage && wf > 0) {
+    const f = SZENARIO_VK_FAKTOR[id];
+    i.zielverkaufspreis = Math.round(lage * f * wf / 1000) * 1000;
+  }
+  return i;
+}
+
+function beleihungswerte(kaufpreis, lage, wf) {
+  if (!lage || !wf) return { ankauf: 0, nachher: 0 };
+  const marktNachher = lage * wf;
+  return { ankauf: Math.min(kaufpreis, marktNachher) * MAPPE_BW_ABSCHLAG, nachher: marktNachher * MAPPE_BW_ABSCHLAG };
+}
+
+function mappeAmpel(m) { return m >= 20 ? "gruen" : (m >= 15 ? "gelb" : "rot"); }
+
+function mappeMaxKaufpreis(inputs) {
+  let kp = inputs.kaufpreis;
+  for (let n = 0; n < 15; n++) {
+    const e = berechne({ ...inputs, kaufpreis: kp });
+    if (e.gesamtkosten <= 0) return 0;
+    const marge = e.bruttogewinn / e.gesamtkosten;
+    if (Math.abs(marge - MAPPE_ZIELMARGE) < 0.0005) break;
+    kp = kp + (e.bruttogewinn - MAPPE_ZIELMARGE * e.gesamtkosten) * 0.6;
+    if (kp <= 0) return 0;
+  }
+  return Math.round(kp / 1000) * 1000;
+}
+
+function objektMaxKaufpreis(basis) {
+  const werte = SZENARIEN_WEGE.map((s) => ({ ...s, maxKp: mappeMaxKaufpreis(szenarioInputs(s.id, basis)) }));
+  const best = werte.reduce((a, b) => (b.maxKp > a.maxKp ? b : a), werte[0]);
+  return { werte, best };
+}
+
+/* ── Inseratstext auswerten (Lexikon aus build.py) ───────────────────── */
+const INSERAT_LEXIKON = [
+  { re: /selbstgestalter|selbst gestalten|nach eigenen (wünschen|vorstellungen)|gestaltungsspielraum/i, art: "wertmindernd",
+    text: "Das Objekt wird als gestaltungsbedürftig angeboten — die vollständige Instandsetzung übernimmt der Erwerber, sie ist im Preis nicht berücksichtigt." },
+  { re: /entwicklungspotenzial|potenzial|ausbaufähig|ausbaupotenzial/i, art: "wertmindernd",
+    text: "„Potenzial“ bedeutet Investitionsbedarf: Der Zustand entspricht nicht dem, was der Vergleichspreis der Lage unterstellt." },
+  { re: /handwerker|bastler|liebhaber|rohdiamant|eigenleistung|renovierungsbedürftig|sanierungsbedürftig|modernisierungsbedarf|in die jahre gekommen/i, art: "wertmindernd",
+    text: "Das Inserat weist selbst auf den Instandsetzungsbedarf hin — Umfang und Kosten trägt der Erwerber." },
+  { re: /historisch|altbau von|jahrhundertwende|fachwerk|scheune|bauernhaus/i, art: "wertmindernd",
+    text: "Bei einem Objekt dieses Alters sind Schadstoffe, Statik und Bauteilzustand vor einem verbindlichen Angebot zu klären; beides sind Kostenpositionen, keine Formalien." },
+  { re: /denkmal|denkmalschutz|erhaltungssatzung/i, art: "wertmindernd",
+    text: "Denkmalschutz bindet jede Maßnahme an die Abstimmung mit der Behörde — das verlängert die Bauzeit und verteuert Fenster, Dach und Fassade erheblich." },
+  { re: /räum\w* im ug|räum\w* im untergeschoss|im untergeschoss|souterrain|hobbyraum|kellerräum\w*/i, art: "wertmindernd",
+    text: "Räume im Untergeschoss zählen baurechtlich in der Regel nicht zur Wohnfläche. Für den Wiederverkauf sind Genehmigungsstatus, lichte Höhe und Feuchteschutz nachzuweisen — sonst ist die beworbene Fläche nicht die verkaufbare." },
+  { re: /galerie|maisonette|dachstudio|dachschräge/i, art: "wertmindernd",
+    text: "Galerie- und Schrägenflächen gehen nur anteilig in die Wohnfläche ein und sind im Wiederverkauf schwerer zu platzieren; zusätzlich ist die Beheizbarkeit zu prüfen." },
+  { re: /dachgeschoss/i, art: "kosten",
+    text: "Dachgeschosslage: Dämmstandard der obersten Geschossdecke und sommerlicher Wärmeschutz sind zu prüfen." },
+  { re: /aufzug|fahrstuhl/i, art: "kosten",
+    text: "Aufzug im Gebäude: dauerhaft erhöhtes Hausgeld durch Wartung und Prüfungen, absehbar eine Sonderumlage bei Modernisierung der Anlage." },
+  { re: /tiefgarage/i, art: "kosten",
+    text: "Tiefgarage: Betoninstandsetzung ist der häufigste Grund für Sonderumlagen in Eigentümergemeinschaften — Rücklage und Protokolle prüfen." },
+  { re: /schwimmbad|pool|sauna/i, art: "kosten",
+    text: "Technikintensive Ausstattung erhöht Betriebs- und Instandhaltungskosten und schränkt den Käuferkreis eher ein, als ihn zu erweitern." },
+  { re: /betreutes wohnen|service-?wohnen|seniorenresidenz|pflegeapartment/i, art: "wertmindernd",
+    text: "Betreutes Wohnen: Der Wiederverkauf ist an einen sehr engen, überwiegend institutionellen Käuferkreis gebunden und an einen Betreuungsvertrag mit laufenden Kosten geknüpft." },
+  { re: /erbbau|erbpacht/i, art: "wertmindernd",
+    text: "Erbbaurecht: Bewertung, Restlaufzeit, Zinsanpassung und Heimfallregelung bestimmen den Wert stärker als der Quadratmeterpreis — und der Kreis finanzierender Banken ist deutlich kleiner." },
+  { re: /wohnrecht|nießbrauch|leibrente/i, art: "wertmindernd",
+    text: "Ein eingetragenes Nutzungsrecht Dritter mindert den Wert und macht das Objekt für Eigennutzer praktisch unverkäuflich." },
+  { re: /vermietet/i, art: "wertmindernd",
+    text: "Vermieteter Zustand: Eigennutzer fallen als Käufer weg, und Kündigungssperrfristen sind zu prüfen — beides schlägt auf den erzielbaren Preis durch." },
+  { re: /keine? balkon|ohne balkon|ohne stellplatz|kein stellplatz/i, art: "wertmindernd",
+    text: "Das Fehlen von Balkon bzw. Stellplatz ist im Wiederverkauf ein spürbarer Preisabschlag gegenüber dem Lagendurchschnitt." },
+  { re: /sofort frei|sofort beziehbar|leerstehend|kurzfristig verfügbar|bezugsfrei/i, art: "druck",
+    text: "Objekt steht leer: Der Verkäufer trägt Hausgeld, Zins und Nebenkosten ohne Gegenwert — jeder Monat kostet ihn Geld. Das ist Verhandlungsspielraum und ein Argument für einen schnellen Notartermin." },
+  { re: /erbengemeinschaft|nachlass|erbschaft|erbfall/i, art: "druck",
+    text: "Erbengemeinschaft: mehrere Beteiligte wollen meist Geld statt Immobilie. Abschlusssicherheit und Geschwindigkeit wiegen hier schwerer als der letzte Preisprozentpunkt." },
+  { re: /provisionsfrei|provi.?frei|ohne (makler)?provision|von privat/i, art: "druck",
+    text: "Provisionsfrei: entweder Direktverkauf oder ein Verkäufer, der die Vermarktung selbst bezahlt. In beiden Fällen redet man mit dem Entscheider — und die ersparte Courtage ist Verhandlungsmasse." },
+  { re: /zwangsversteigerung|teilungsversteigerung|insolvenz/i, art: "druck",
+    text: "Zwangslage: anderer Ablauf, keine Gewährleistung, sofortige Zahlungsfähigkeit erforderlich — dafür wenig Wettbewerb." },
+  { re: /umzugsbedingt|berufsbedingt|aus gesundheitlichen|altersbedingt|scheidung/i, art: "druck",
+    text: "Der Verkaufsanlass deutet auf einen Termindruck beim Verkäufer hin — Flexibilität beim Übergabezeitpunkt ist hier bares Geld wert." },
+  { re: /preis (reduziert|gesenkt)|neuer preis|preisanpassung/i, art: "druck",
+    text: "Der Preis wurde bereits reduziert: Der Verkäufer hat seine Erwartung selbst nach unten korrigiert — erfahrungsgemäß folgt eine zweite Korrektur." },
+];
+
+function inseratSignale() {
+  const o = STANDALONE_EXPOSE.objekt || {};
+  const ex = STANDALONE_EXPOSE.extraktion || {};
+  const text = [o.titel, (o.besonderheiten || []).join(" "), o.zustand, ex.notizen, STANDALONE_EXPOSE.volltext].filter(Boolean).join(" · ");
+  const treffer = { wertmindernd: [], kosten: [], druck: [] };
+  INSERAT_LEXIKON.forEach((eintrag) => {
+    const m = text.match(eintrag.re);
+    if (m) treffer[eintrag.art].push({ zitat: m[0], text: eintrag.text });
+  });
+  return treffer;
+}
+
+/* ── Kompakt-Objektmappe (live) ─────────────────────────────────────── */
+let DRUCK_SICHTBAR = false;
+let MAPPE_KARTE = null;
+
+function standaloneMappePlatzieren() {
+  if (!standaloneLage()) return;
+  if (!MAPPE_KARTE) { MAPPE_KARTE = document.createElement("div"); MAPPE_KARTE.id = "standaloneMappe"; }
+  const karte = document.querySelector('#links [data-anker="sanierung"]');
+  if (karte) karte.parentNode.insertBefore(MAPPE_KARTE, karte);
+}
+
+function standaloneMappeUpdate() {
+  const card = document.getElementById("standaloneMappe");
+  if (!card) return;
+  const i = state.inputs;
+  const lage = standaloneLage();
+  const wf = i.wohnflaeche || 0;
+  const e = berechne(i);
+  const marge = e.gesamtkosten > 0 ? e.bruttogewinn / e.gesamtkosten * 100 : 0;
+  const margeNachSt = e.bruttogewinn > 0 ? marge * (1 - MAPPE_STEUERSATZ) : marge;
+  const zeilen = [];
+  zeilen.push(["Marge auf GIK (Gesamtinvestitionskosten)", fmtPct(marge) + '<span class="dot ' + mappeAmpel(marge) + '"></span>', "Ziel 20–25 %"]);
+  zeilen.push(["Marge nach Steuern (" + Math.round(MAPPE_STEUERSATZ * 100) + " % gewerblich)",
+    fmtPct(margeNachSt) + '<span class="dot ' + mappeAmpel(margeNachSt) + '"></span>', "Ebene der Gesellschaft — bei Ausschüttung zzgl. KapESt"]);
+  zeilen.push(["darin: Bearbeitungsgebühr " + fmtPct(MAPPE_BEARBEITUNGSGEBUEHR * 100) + " auf die Finanzierung", fmtEur(e.bearbeitungsgebuehr || 0), "in Zinslast enthalten"]);
+  zeilen.push(["Gebundenes Kapital (EK + Kontokorrent)",
+    fmtEur(e.gebundenesKapital) + '<span class="dot ' + (e.finanzierbar ? "gruen" : "rot") + '"></span>',
+    e.finanzierbar ? "verfügbar" : "Deckungslücke " + fmtEur(e.deckungsluecke)]);
+  if (PROFIL.objektdarlehenAktiv && lage && wf > 0) {
+    const bw = beleihungswerte(i.kaufpreis, lage, wf);
+    const auslauf = bw.ankauf > 0 ? e.objektdarlehen / bw.ankauf * 100 : 0;
+    const aAmp = auslauf <= 60 ? "gruen" : (auslauf <= 80 ? "gelb" : "rot");
+    zeilen.push(["Beleihungswert Ankauf (Ist-Zustand)", fmtEur(bw.ankauf), "min(Kaufpreis; Lage-Ø × Fläche) × 0,85"]);
+    zeilen.push(["Beleihungsauslauf (Darlehen ÷ BW Ankauf)", fmtPct(auslauf) + '<span class="dot ' + aAmp + '"></span>', "≤ 60 % grün, ≤ 80 % gelb"]);
+    zeilen.push(["Beleihungswert nach Maßnahme", fmtEur(bw.nachher), "nur für Umschuldung/Nachbeleihung"]);
+  }
+  const kipp = [];
+  if (lage && wf > 0) {
+    const eL = berechne({ ...i, zielverkaufspreis: Math.round(lage * wf) });
+    kipp.push(["VK nur zum Lage-Ø (" + fmtNum(lage) + " €/m²)", eL.gesamtkosten > 0 ? eL.bruttogewinn / eL.gesamtkosten * 100 : 0]);
+  }
+  const eT = berechne({ ...i, haltedauerMonate: i.haltedauerMonate + 4, finanzierungsdauerMonate: i.finanzierungsdauerMonate + 4 });
+  kipp.push(["Vermarktung +4 Monate", eT.gesamtkosten > 0 ? eT.bruttogewinn / eT.gesamtkosten * 100 : 0]);
+  if (i.sanierungAktiv || i.renovierungAktiv) {
+    const mod = { ...i };
+    if (i.sanierungAktiv) mod.sanierungskostenM2 = i.sanierungskostenM2 * 1.2;
+    if (i.renovierungAktiv) mod.renovierungPauschale = i.renovierungPauschale * 1.2;
+    const eB = berechne(mod);
+    kipp.push(["Baukosten +20 %", eB.gesamtkosten > 0 ? eB.bruttogewinn / eB.gesamtkosten * 100 : 0]);
+  }
+  const sig = inseratSignale();
+  const fehlend = (STANDALONE_EXPOSE.extraktion && STANDALONE_EXPOSE.extraktion.fehlend) || [];
+  const offen = fehlend.length
+    ? fehlend.map((f) => f.replace(/_eur|_m2|_monat/g, "").replace(/_/g, " ")).join(" · ")
+    : "Baujahr · Hausgeld · Rücklage · Protokolle · vermietet?";
+  card.innerHTML = '<div class="m-kopf">Objektmappe kompakt — rechnet live mit</div>'
+    + '<div class="m-hero"><div><div class="m-abschnitt" style="margin-top:0">Angebot</div>'
+    + '<span class="zahl">' + fmtEur(i.kaufpreis) + '</span></div>'
+    + (wf > 0 ? '<span class="delta">' + fmtEur(i.kaufpreis / wf) + '/m² Wohnfläche</span>' : "") + '</div>'
+    + '<table>' + zeilen.map((z) => '<tr><td>' + z[0] + '</td><td class="n">' + z[1]
+      + (z[2] ? ' <span style="color:hsl(var(--muted-foreground));font-size:11px">' + z[2] + '</span>' : '') + '</td></tr>').join("") + '</table>'
+    + '<div class="m-abschnitt">Kipppunkte</div><table>'
+    + kipp.map((k) => '<tr><td>• ' + k[0] + '</td><td class="n">Marge ' + fmtPct(k[1]) + '<span class="dot ' + mappeAmpel(k[1]) + '"></span></td></tr>').join("") + '</table>'
+    + (sig.wertmindernd.length || sig.kosten.length
+      ? '<div class="m-abschnitt">Aus dem Inserat gelesen</div><table>'
+        + sig.wertmindernd.concat(sig.kosten).map((s) => '<tr><td>• „' + esc(s.zitat) + '“</td><td class="n" style="text-align:left;white-space:normal;color:hsl(var(--muted-foreground));font-size:11.5px">'
+          + s.text.split(":")[0].split(" — ")[0].slice(0, 78) + '</td></tr>').join("") + '</table>' : "")
+    + (sig.druck.length
+      ? '<details id="mappeDruck"' + (DRUCK_SICHTBAR ? " open" : "") + '><summary>Verhandlungssituation einblenden (nur intern — beim Maklertermin zulassen!)</summary><table>'
+        + sig.druck.map((s) => '<tr><td>• „' + esc(s.zitat) + '“ — ' + s.text + '</td></tr>').join("") + '</table></details>' : "")
+    + '<div class="m-abschnitt">Offen vor Besichtigung</div><div class="m-fuss" style="margin-top:2px">' + esc(offen) + '</div>'
+    + '<div class="m-fuss">Marge auf GIK = Ergebnis vor Steuern / Gesamtaufwand bis Verkauf (GIK + Zinsen + Verkaufsnebenkosten). VK-Vergleichsbasis Lage-Ø aus Portal-Angebotspreisen, keine Abschlusspreise.</div>';
+  const druck = card.querySelector("#mappeDruck");
+  if (druck) druck.addEventListener("toggle", () => { DRUCK_SICHTBAR = druck.open; });
+}
+
+/* ── Dokumente: Bankvorlage und Verhandlungsgrundlage (aus build.py) ───── */
+const GEBOT_PUFFER = 0.08;
+const ERSTABSCHLAG = 0.10;
+const ERSTABSCHLAG_LANGLIEGER = 0.15;
+
+function docKontext() {
+  const i = state.inputs;
+  const o = STANDALONE_EXPOSE.objekt || {};
+  const adr = o.adresse || {};
+  const k = STANDALONE_EXPOSE.kaufdaten || {};
+  const q = STANDALONE_EXPOSE.quelle || {};
+  const lage = standaloneLage();
+  const wf = i.wohnflaeche || 0;
+  const e = berechne(i);
+  const objMax = objektMaxKaufpreis(i);
+  const marktD = STANDALONE_EXPOSE.markt || {};
+  const erstabschlag = (marktD.tage_am_markt && marktD.tage_am_markt > 90) ? ERSTABSCHLAG_LANGLIEGER : ERSTABSCHLAG;
+  const gebot = Math.round(Math.min(objMax.best.maxKp * (1 - GEBOT_PUFFER), i.kaufpreis * (1 - erstabschlag)) / 1000) * 1000;
+  const szLabel = (SZENARIEN_WEGE.find((s) => s.id === SZENARIO_AKTIV) || {}).label || (DATEN.exitName || "frei eingestellt");
+  return {
+    i, o, adr, k, q, lage, wf, e, objMax, gebot, szLabel, erstabschlag,
+    invest: e.sanierungNetto + e.renovierungskosten,
+    ort: [adr.plz, adr.ort, adr.stadtteil].filter(Boolean).join(" · ") || "Ort k. A.",
+    heute: new Date().toLocaleDateString("de-DE"),
+  };
+}
+
+function docOeffnen(titel, inhalt) {
+  const alt = document.getElementById("a2oDoc");
+  if (alt) alt.remove();
+  const box = document.createElement("div");
+  box.id = "a2oDoc";
+  box.innerHTML = '<div class="doc-bar"><button data-doc="print">Drucken / als PDF sichern</button><button data-doc="close">Schließen</button>'
+    + '<span>' + titel + ' — Text ist direkt bearbeitbar, gelbe Stellen ausfüllen. Nichts wird gespeichert: erst drucken, dann schließen.</span></div>'
+    + '<div class="doc-blatt" contenteditable="true">' + inhalt + '</div>';
+  document.body.appendChild(box);
+  box.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-doc]");
+    if (!b) return;
+    if (b.dataset.doc === "print") window.print(); else box.remove();
+  });
+  box.scrollTop = 0;
+}
+
+function docKopf(c, art) {
+  return '<div style="font-size:11px;letter-spacing:.1em;color:#667">A²O · ' + art + '</div>'
+    + '<h1>' + esc(c.o.titel || "Objekt") + '</h1>'
+    + '<div style="color:#556">' + esc(c.ort) + ' · ' + esc(c.o.objekttyp || "Typ k. A.")
+    + (c.wf ? " · " + fmtNum(c.wf) + " m²" : "") + (c.o.zimmer != null ? " · " + c.o.zimmer + " Zi." : "") + '</div>'
+    + '<div style="color:#889;font-size:11.5px;margin-top:3px">' + esc(c.q.firma || c.q.portal || "Quelle k. A.") + " · Stand " + c.heute + '</div>';
+}
+
+function docBank() {
+  const c = docKontext();
+  const e = c.e, i = c.i;
+  const marge = e.gesamtkosten > 0 ? e.bruttogewinn / e.gesamtkosten * 100 : 0;
+  const bwSatz = beleihungswerte(i.kaufpreis, c.lage, c.wf);
+  const bw = bwSatz.nachher;
+  const auslauf = bwSatz.ankauf > 0 ? e.objektdarlehen / bwSatz.ankauf * 100 : 0;
+  const zeile = (t, v, kl) => '<tr' + (kl ? ' class="' + kl + '"' : '') + '><td>' + t + '</td><td class="n">' + v + '</td></tr>';
+  const vergleich = c.objMax.werte.map((w) => {
+    const ei = berechne(szenarioInputs(w.id, i));
+    const m = ei.gesamtkosten > 0 ? ei.bruttogewinn / ei.gesamtkosten * 100 : 0;
+    return '<tr><td>' + w.label + (w.id === c.objMax.best.id ? " <b>(bester Weg)</b>" : "")
+      + '</td><td class="n">' + fmtEur(ei.sanierungNetto + ei.renovierungskosten)
+      + '</td><td class="n">' + fmtEur(ei.verkaufserloesGesamt) + '</td><td class="n">' + fmtPct(m) + '</td></tr>';
+  }).join("");
+  const kipp = [];
+  if (c.lage && c.wf) {
+    const eL = berechne({ ...i, zielverkaufspreis: Math.round(c.lage * c.wf) });
+    kipp.push(["Verkauf nur zum Lage-Ø (" + fmtNum(c.lage) + " €/m²)", eL.gesamtkosten > 0 ? eL.bruttogewinn / eL.gesamtkosten * 100 : 0]);
+  }
+  const eT = berechne({ ...i, haltedauerMonate: i.haltedauerMonate + 4, finanzierungsdauerMonate: i.finanzierungsdauerMonate + 4 });
+  kipp.push(["Vermarktung dauert 4 Monate länger", eT.gesamtkosten > 0 ? eT.bruttogewinn / eT.gesamtkosten * 100 : 0]);
+  const eV = berechne({ ...i, zielverkaufspreis: Math.round(i.zielverkaufspreis * 0.9) });
+  kipp.push(["Verkauf 10 % unter Ansatz (" + fmtEur(Math.round(i.zielverkaufspreis * 0.9)) + ")", eV.gesamtkosten > 0 ? eV.bruttogewinn / eV.gesamtkosten * 100 : 0]);
+  if (i.sanierungAktiv || i.renovierungAktiv) {
+    const mod = { ...i };
+    if (i.sanierungAktiv) mod.sanierungskostenM2 = i.sanierungskostenM2 * 1.2;
+    if (i.renovierungAktiv) mod.renovierungPauschale = i.renovierungPauschale * 1.2;
+    const eB = berechne(mod);
+    kipp.push(["Baukosten 20 % über Ansatz", eB.gesamtkosten > 0 ? eB.bruttogewinn / eB.gesamtkosten * 100 : 0]);
+  }
+  const inhalt = docKopf(c, "FINANZIERUNGSANFRAGE · OBJEKTUNTERLAGE")
+    + '<div class="hero"><div style="font-size:11px;letter-spacing:.07em;color:#667">KAPITALBEDARF AUS EIGENEN MITTELN</div>'
+    + '<div class="gross">' + fmtEur(e.gebundenesKapital) + '</div>'
+    + '<div class="klein">bei einem Kaufpreis von ' + fmtEur(i.kaufpreis) + ' und einem Objektdarlehen von ' + fmtEur(e.objektdarlehen)
+    + ' (' + fmtPct(PROFIL.objektdarlehenLtv) + ' vom Kaufpreis)</div></div>'
+    + '<h2>Darlehensnehmer</h2><table>'
+    + zeile("Rechtsform", '<span class="fuellen">[natürliche Person / GmbH / GbR]</span>')
+    + zeile("Firmierung, Sitz, Handelsregisternummer", '<span class="fuellen">[ausfüllen]</span>')
+    + zeile("Gesellschafter und Beteiligungsquoten", '<span class="fuellen">[ausfüllen]</span>')
+    + zeile("Jahresabschlüsse der letzten zwei Jahre", '<span class="fuellen">[liegen bei / werden nachgereicht bis …]</span>')
+    + zeile("Aktuelle BWA", '<span class="fuellen">[Stand …]</span>')
+    + zeile("Bürgschaft des Gesellschafters", '<span class="fuellen">[wird angeboten in Höhe von … / selbstschuldnerisch]</span>')
+    + zeile("Bisherige Objekte / Referenzen", '<span class="fuellen">[Objekt, Ankauf, Verkauf, Ergebnis]</span>')
+    + zeile("Selbstauskunft und Vermögensaufstellung", '<span class="fuellen">[liegen bei]</span>')
+    + '</table>'
+    + '<p style="font-size:12px;color:#556">Bei einer neu gegründeten Gesellschaft ohne Historie ersetzt die Bürgschaft des Gesellschafters die fehlenden Jahresabschlüsse — sie proaktiv anzubieten spart eine Verhandlungsrunde. <span class="fuellen">[streichen, was nicht zutrifft]</span></p>'
+    + '<h2>Vorhaben</h2><p>Ankauf, ' + esc(c.szLabel.toLowerCase()) + ' und Wiederverkauf innerhalb von ' + i.haltedauerMonate + ' Monaten. '
+    + 'Die Maßnahme ist mit ' + fmtEur(c.invest) + ' angesetzt (' + (c.wf ? fmtEur(c.invest / c.wf) + "/m² Wohnfläche, " : "")
+    + 'Quelle: eigene Kostenschätzung, brutto). <span class="fuellen">[Ergänzen: Bauzeitenplan, ausführende Firmen, eigene Bauleitung]</span></p>'
+    + '<h2>Rechenweg</h2><table>'
+    + zeile("Kaufpreis", fmtEur(i.kaufpreis))
+    + zeile("+ Grunderwerbsteuer " + fmtPct(i.grunderwerbsteuerSatz) + " (BW)", fmtEur(e.grunderwerbsteuer))
+    + zeile("+ Notar &amp; Grundbuch " + fmtPct(i.notarGrundbuchSatz), fmtEur(e.notarGrundbuch))
+    + zeile("+ Courtage " + fmtPct(i.maklerKaufSatz), fmtEur(e.maklerKauf))
+    + zeile("= Kaufnebenkosten", fmtEur(e.kaufnebenkosten), "zs")
+    + (e.renovierungskosten ? zeile("+ Renovierung", fmtEur(e.renovierungskosten)) : "")
+    + (e.sanierungNetto ? zeile("+ Sanierung" + (e.kfwFoerderung ? " (nach KfW " + fmtEur(e.kfwFoerderung) + ")" : ""), fmtEur(e.sanierungNetto)) : "")
+    + (e.baunebenkosten ? zeile("+ Baunebenkosten " + fmtPct(i.baunebenkostenProzent || 0) + " der Bausumme (Statik, Energieberater, Gebühren, Entsorgung, Planung/Bauleitung)", fmtEur(e.baunebenkosten)) : "")
+    + (e.unvorhergesehenes ? zeile("+ Unvorhergesehenes " + fmtPct(i.unvorhergesehenesProzent || 0) + " auf Bausumme + Baunebenkosten", fmtEur(e.unvorhergesehenes)) : "")
+    + zeile("+ Hausgeld " + i.haltedauerMonate + " Mon. × " + fmtEur(i.hausgeldProMonat), fmtEur(e.hausgeldGesamt))
+    + (e.objektkostenGesamt ? zeile("+ Objektkosten " + i.haltedauerMonate + " Mon. × " + fmtEur(i.objektkostenProMonat || 0) + " (Grundsteuer, Versicherung, Bauwasser/-strom, Bauherrenhaftpflicht)", fmtEur(e.objektkostenGesamt)) : "")
+    + (e.sonderumlage ? zeile("+ Sonderumlage WEG (beschlossen/absehbar)", fmtEur(e.sonderumlage)) : "")
+    + (e.provisionenSonstige ? zeile("+ Sonstige Provisionen", fmtEur(e.provisionenSonstige)) : "")
+    + zeile("= Gesamtinvestitionskosten (GIK), vor Finanzierung", fmtEur(e.gesamtinvestition), "zs")
+    + zeile("+ Zinsen Objektdarlehen (" + fmtPct(PROFIL.objektdarlehenZins) + " p.a.)", fmtEur(e.zinsenObjektdarlehen))
+    + zeile("+ Zinsen Kontokorrent (" + fmtPct(PROFIL.kkZins) + " p.a.)", fmtEur(e.zinsenKK))
+    + zeile("+ Bearbeitungsgebühr " + fmtPct(MAPPE_BEARBEITUNGSGEBUEHR * 100), fmtEur(e.bearbeitungsgebuehr || 0))
+    + zeile("+ Verkaufsnebenkosten (Makler " + fmtPct(i.maklerkosten) + ", Notar " + fmtPct(i.notarVerkauf) + ")", fmtEur(e.verkaufsnebenkosten))
+    + zeile("= Gesamtaufwand bis Verkauf (GIK + Zinsen + Verkaufsnebenkosten)", fmtEur(e.gesamtkosten), "su")
+    + zeile("Verkaufserlös " + (c.wf ? fmtNum(c.wf) + " m² × " + fmtEur(i.zielverkaufspreis / c.wf) + "/m²" : ""), fmtEur(e.verkaufserloesGesamt))
+    + (e.mieteGesamt ? zeile("+ Mieteinnahmen netto während der Haltedauer", fmtEur(e.mieteGesamt)) : "")
+    + zeile("Ergebnis vor Steuern", fmtEur(e.bruttogewinn), "su")
+    + zeile("Ergebnis nach Steuern (" + Math.round(MAPPE_STEUERSATZ * 100) + " % gewerblich) *", fmtEur(e.bruttogewinn > 0 ? e.bruttogewinn * (1 - MAPPE_STEUERSATZ) : e.bruttogewinn), "kl")
+    + '</table>'
+    + '<p style="font-size:11.5px;color:#667">* Der Satz von ' + Math.round(MAPPE_STEUERSATZ * 100) + ' % gilt für die Ebene der GESELLSCHAFT (Körperschaftsteuer, Solidaritätszuschlag, Gewerbesteuer). Bei Ausschüttung an den Gesellschafter kommt Kapitalertragsteuer hinzu — die effektive Belastung liegt dann deutlich höher. Was hier steht, ist der Betrag, der in der Gesellschaft verbleibt, nicht der, der beim Gesellschafter ankommt.</p>'
+    + '<h2>Finanzierungsstruktur</h2><table>'
+    + zeile("Objektdarlehen (" + fmtPct(PROFIL.objektdarlehenLtv) + " vom Kaufpreis, grundschuldbesichert)", fmtEur(e.objektdarlehen))
+    + zeile("Eigenkapitaleinsatz", fmtEur(e.ekEinsatz))
+    + zeile("Kontokorrent-Inanspruchnahme", fmtEur(e.kkInanspruchnahme))
+    + zeile("= gebundenes Kapital aus eigenen Mitteln", fmtEur(e.gebundenesKapital), "zs")
+    + (bw ? zeile("Beleihungswert Ankauf (Ist-Zustand, − " + Math.round((1 - MAPPE_BW_ABSCHLAG) * 100) + " % Sicherheitsabschlag)", fmtEur(bwSatz.ankauf)) : "")
+    + (bw ? zeile("Beleihungsauslauf (Darlehen ÷ Beleihungswert Ankauf)", fmtPct(auslauf), "su") : "")
+    + (bw ? zeile("nachrichtlich: Marktwert nach Maßnahme (Lage-Ø × Fläche)", fmtEur(c.lage * c.wf), "kl") : "")
+    + (bw ? zeile("nachrichtlich: Beleihungswert nach Maßnahme (nur relevant für Umschuldung/Nachbeleihung)", fmtEur(bwSatz.nachher), "kl") : "")
+    + '</table>'
+    + '<p style="font-size:12px;color:#556">Der Beleihungsauslauf ist bewusst gegen den Beleihungswert im ANKAUFSZUSTAND gerechnet — das Darlehen wird beim Erwerb gegen das unsanierte Objekt gezogen, die Wertsteigerung existiert zu diesem Zeitpunkt noch nicht. Der Wert nach Maßnahme steht nur nachrichtlich und wäre erst für eine Umschuldung oder Nachbeleihung nach Fertigstellung die richtige Bezugsgröße. Die Kaufnebenkosten werden aus eigenen Mitteln getragen und sind nicht Teil der Beleihung. <span class="fuellen">[Ergänzen: Selbstauskunft, Vermögensaufstellung, bisherige Objekte]</span></p>'
+    + '<h2>Rückführung</h2>'
+    + '<p>Primär aus dem Verkaufserlös von ' + fmtEur(e.verkaufserloesGesamt) + ' nach ' + i.haltedauerMonate + ' Monaten; das Darlehen von ' + fmtEur(e.objektdarlehen) + ' wird bei Kaufpreisfälligkeit vollständig abgelöst.</p>'
+    + '<p>Hilfsweise Vermietung: Findet sich innerhalb der Vermarktungsfrist kein Käufer, wird die Wohnung vermietet und die Zwischenfinanzierung in ein Annuitätendarlehen umgeschuldet. Der Kapitaldienst wird dann aus der Miete getragen.</p>'
+    + '<table>'
+    + zeile("Erzielbare Kaltmiete", '<span class="fuellen">[… €/m² × ' + (c.wf ? fmtNum(c.wf) + ' m²' : '… m²') + ']</span>')
+    + zeile("Jahresnettokaltmiete", '<span class="fuellen">[… €]</span>')
+    + zeile("Umschuldung in Annuitätendarlehen", '<span class="fuellen">[… % Zins, … % Anfangstilgung]</span>')
+    + zeile("Resultierender Kapitaldienst p. a.", '<span class="fuellen">[… €]</span>')
+    + zeile("Kapitaldienstdeckung (Jahresnettokaltmiete ÷ Kapitaldienst)", '<span class="fuellen">[…]</span>')
+    + '</table>'
+    + '<p style="font-size:12px;color:#556">Kapitaldienst = Zins + Tilgung. Eine Deckung unter etwa 1,1 wird der Bank zu eng: dann trägt die Miete den Kapitaldienst nur noch ohne jeden Puffer für Leerstand, Instandhaltung und Verwaltung. <span class="fuellen">[Mietansatz mit zwei Vergleichsangeboten belegen]</span></p>'
+    + (c.lage ? '<h2>Ergebnisqualität und Wege</h2><table>'
+      + '<tr><td><b>Weg</b></td><td class="n"><b>Maßnahme</b></td><td class="n"><b>Verkaufserlös</b></td><td class="n"><b>Marge auf GIK</b></td></tr>'
+      + vergleich + '</table>'
+      + '<p style="font-size:12px;color:#556">Gerechnet mit dem Modellansatz Lage-Ø × Szenariofaktor. Marge auf GIK = Ergebnis vor Steuern ÷ Gesamtaufwand bis Verkauf. Aktuell eingestellt: ' + esc(c.szLabel) + ', Marge auf GIK ' + fmtPct(marge) + '.</p>' : "")
+    + '<h2>Risikobetrachtung</h2><table>' + kipp.map((k) => zeile(k[0], "Marge " + fmtPct(k[1]))).join("") + '</table>'
+    + '<p style="font-size:12px;color:#556">Die Zinsen sind konservativ gerechnet: beide Linien gelten ab Tag 1 als voll gezogen, obwohl die Baukosten real über die Bauzeit abfließen.</p>'
+    + '<h2>Noch beizubringende Unterlagen</h2>'
+    + '<p>Grundbuchauszug (alle drei Abteilungen), Flurkarte, Baulastenverzeichnis, Teilungserklärung mit Aufteilungsplan, letzte drei Protokolle der Eigentümerversammlung, Wirtschaftsplan, Jahresabrechnung, Höhe der Instandhaltungsrücklage, Energieausweis. <span class="fuellen">[Ergänzen nach Einsicht]</span></p>'
+    + '<div class="fuss">Interne Entscheidungs- und Finanzierungsunterlage. Verkaufsansatz auf Basis von Portal-Angebotspreisen (Lage-Ø), nicht auf Basis beurkundeter Abschlusspreise — für ein verbindliches Gebot gegen die Kaufpreissammlung des Gutachterausschusses zu prüfen. Kostenschätzung ist eine Maschinenschätzung mit niedriger Konfidenz, kein Angebot.</div>';
+  docOeffnen("Bankvorlage", inhalt);
+}
+
+function docMakler() {
+  const c = docKontext();
+  const i = c.i;
+  const kaufM2 = c.wf ? i.kaufpreis / c.wf : 0;
+  const nachMassnahmeM2 = c.wf ? (i.kaufpreis + c.invest) / c.wf : 0;
+  const ueberLage = c.lage && nachMassnahmeM2 ? (nachMassnahmeM2 / c.lage - 1) * 100 : 0;
+  const gebotM2 = c.wf ? (c.gebot + c.invest) / c.wf : 0;
+  const lageQuelle = (STANDALONE_EXPOSE.a2o_check && STANDALONE_EXPOSE.a2o_check.lage_quelle) || "Quelle nachtragen";
+  const punkte = [];
+  const sig = inseratSignale();
+  sig.wertmindernd.forEach((s) => punkte.push('Das Inserat spricht von <b>„' + esc(s.zitat) + '“</b>. ' + s.text));
+  sig.kosten.forEach((s) => punkte.push('Zum Stichwort <b>„' + esc(s.zitat) + '“</b>: ' + s.text));
+  const bj = c.o.baujahr;
+  if (bj && bj < 1970) punkte.push("Baujahr " + bj + ": Schadstoffe (Asbest, KMF, Floor-Flex) sind bei diesem Jahrgang einzukalkulieren — Untersuchung und ggf. Entsorgung gehen zu Lasten des Erwerbers.");
+  else if (bj && bj < 1995) punkte.push("Baujahr " + bj + ": Haustechnik und Elektrik sind am Ende ihrer Nutzungsdauer.");
+  const ea = c.o.energieausweis || {};
+  if (ea.klasse && ["E", "F", "G", "H"].indexOf(ea.klasse) >= 0)
+    punkte.push("Energieklasse " + ea.klasse + (ea.wert_kwh_m2a ? " (" + ea.wert_kwh_m2a + " kWh/m²a)" : "") + ": energetisch im unteren Feld. Bei einer Eigentumswohnung sind Hülle und Heizung Gemeinschaftseigentum — eine beschlossene Sanierung trifft den Erwerber als Sonderumlage.");
+  if (c.o.vermietet) punkte.push("Vermietet: der Käuferkreis reduziert sich auf Kapitalanleger, Eigennutzer fallen weg. Kündigungssperrfristen sind zu prüfen.");
+  (c.o.besonderheiten || []).forEach((b) => {
+    if (String(b).toLowerCase().indexOf("erbbau") >= 0) punkte.push("Erbbaurecht: Bewertung und Finanzierung folgen anderen Regeln, der Kreis finanzierender Banken ist deutlich kleiner.");
+  });
+  const markt = STANDALONE_EXPOSE.markt || {};
+  if (markt.tage_am_markt && markt.tage_am_markt > 60) punkte.push("Das Objekt steht seit " + markt.tage_am_markt + " Tagen im Markt — der aufgerufene Preis hat bisher keinen Käufer gefunden.");
+  const punkteHtml = (punkte.length ? "<ul>" + punkte.map((p) => "<li>" + p + "</li>").join("") + "</ul>" : "")
+    + '<p class="fuellen">[Nach der Besichtigung ergänzen: konkrete Befunde mit Zahl — „Elektrik von 1968, nach Angebot 34.000 €“. Belegte Zahlen verschieben Preise, Meinungen nicht.]</p>';
+  const fehlend = (STANDALONE_EXPOSE.extraktion && STANDALONE_EXPOSE.extraktion.fehlend) || [];
+  const offenHtml = fehlend.length ? fehlend.map((f) => f.replace(/_eur|_m2|_monat/g, "").replace(/_/g, " ")).join(" · ")
+    : "Baujahr · Hausgeld · Instandhaltungsrücklage · Protokolle · Vermietungsstand";
+  const inhalt = docKopf(c, "KAUFINTERESSE · GESPRÄCHSGRUNDLAGE")
+    + '<div class="hero"><div style="font-size:11px;letter-spacing:.07em;color:#667">UNSER ANGEBOT</div>'
+    + '<div class="gross">' + fmtEur(c.gebot) + '</div>'
+    + '<div class="klein">gegenüber einem Angebotspreis von ' + fmtEur(i.kaufpreis) + (c.wf ? " · " + fmtEur(c.gebot / c.wf) + "/m² Wohnfläche" : "") + '</div></div>'
+    + '<h2>Wer wir sind und was wir mitbringen</h2>'
+    + '<p>Wir kaufen im Großraum Stuttgart Bestandsobjekte, setzen sie mit eigenem Architekturbüro instand und veräußern sie anschließend. Für Sie heißt das: Die Kalkulation steht vor dem Gespräch, die Finanzierung ist vorbereitet, und wir ziehen den Termin durch — keine Rückabwicklung, weil eine Bank drei Wochen später abspringt. Beim Übergabezeitpunkt sind wir flexibel, falls der Verkäufer Zeit braucht. <span class="fuellen">[Ergänzen: Referenzobjekte, Name der finanzierenden Bank, gewünschter Notartermin]</span></p>'
+    + '<h2>Wie wir zu diesem Preis kommen</h2>'
+    + (c.lage ? '<p>Der Quadratmeterpreis vergleichbarer Objekte in ' + esc(c.adr.ort || "der Lage") + ' liegt bei rund ' + fmtEur(c.lage) + '/m² (Quelle: ' + esc(lageQuelle) + '). Dieser Wert gilt für Objekte in marktgängigem, bezugsfertigem Zustand. Das ist hier nicht der Fall.</p>' : "")
+    + '<table><tr><td><b>Vergleichsobjekt</b></td><td><b>Fläche</b></td><td><b>Preis</b></td><td><b>Datum</b></td></tr>'
+    + Array(3).fill('<tr><td class="fuellen">[Adresse]</td><td class="fuellen">[… m²]</td><td class="fuellen">[… €]</td><td class="fuellen">[…]</td></tr>').join("")
+    + '</table>'
+    + '<p style="font-size:12px;color:#556" class="fuellen">[VOR dem Termin ausfüllen und diesen Hinweis löschen: Ohne zwei bis drei belegte Vergleichsobjekte kippt der Makler die gesamte Argumentation mit einem Satz — „das ist doch nur ein Portal-Durchschnitt aus Angebotspreisen“. Mit Adresse, Fläche, Preis und Datum kann er das nicht.]</p>'
+    + '<p>Zum aufgerufenen Preis von ' + fmtEur(i.kaufpreis) + ' entspricht der Erwerb ' + fmtEur(kaufM2) + '/m². Rechnet man die zur Marktgängigkeit erforderlichen Arbeiten von '
+    + fmtEur(c.invest) + ' hinzu, liegen wir bei <b>' + fmtEur(nachMassnahmeM2) + '/m²</b>'
+    + (c.lage ? ' — und damit ' + (ueberLage >= 0 ? "rund " + fmtPct(ueberLage) + " <b>über</b>" : "nur " + fmtPct(-ueberLage) + " unter") + ' dem örtlichen Niveau, bevor eine einzige Stunde Arbeit bezahlt ist.' : ".") + '</p>'
+    + '<p>Auf Basis unseres Angebots von ' + fmtEur(c.gebot) + ' liegt der Erwerb inklusive Instandsetzung bei ' + fmtEur(gebotM2) + '/m². Das ist die Größenordnung, in der wir das Objekt darstellen können.</p>'
+    + '<h2>Erforderliche Arbeiten</h2><table>'
+    + '<tr><td>Instandsetzung zur Marktgängigkeit' + (c.wf ? ", " + fmtNum(c.wf) + " m²" : "") + '</td><td class="n">' + fmtEur(c.invest) + '</td></tr>'
+    + (c.wf ? '<tr class="kl"><td>je m² Wohnfläche</td><td class="n">' + fmtEur(c.invest / c.wf) + '</td></tr>' : "")
+    + '</table><table>'
+    + '<tr><td><b>Gewerk</b></td><td class="n"><b>Menge</b></td><td class="n"><b>Einheitspreis</b></td><td class="n"><b>Summe</b></td></tr>'
+    + Array(5).fill('<tr><td class="fuellen">[Gewerk]</td><td class="n fuellen">[Menge]</td><td class="n fuellen">[€/Einheit]</td><td class="n fuellen">[€]</td></tr>').join("")
+    + '<tr class="zs"><td>Summe</td><td class="n"></td><td class="n"></td><td class="n fuellen">[€]</td></tr></table>'
+    + '<p style="font-size:12px;color:#556">Grundlage ist eine eigene Kostenschätzung nach Gewerken. <span class="fuellen">[Vor dem Termin ausfüllen: eine Aufstellung nach Gewerken mit Mengen wirkt ungleich stärker als eine Pauschale — sie verlagert das Gespräch auf einzelne, belegbare Positionen. Nach der Besichtigung durch Handwerkerangebote ersetzen; ein beigelegtes Angebot schlägt jede Schätzung.]</span></p>'
+    + '<h2>Wertmindernde Punkte</h2>' + punkteHtml
+    + '<h2>Was wir vor einem verbindlichen Angebot benötigen</h2>'
+    + '<p>Grundbuchauszug, Teilungserklärung mit Aufteilungsplan, die letzten drei Protokolle der Eigentümerversammlung, Wirtschaftsplan und Jahresabrechnung, Höhe der Instandhaltungsrücklage sowie Angaben zu beschlossenen oder absehbaren Sonderumlagen, Energieausweis, Baulastenverzeichnis.</p>'
+    + '<p style="font-size:12px;color:#556">Aus dem Exposé bisher nicht ersichtlich: ' + esc(offenHtml) + '.</p>'
+    + '<h2>Was wir darüber hinaus anbieten</h2><ul>'
+    + '<li class="fuellen">Kauf wie besichtigt unter Ausschluss der Sachmängelhaftung — Sie tragen kein Gewährleistungsrisiko aus dem Zustand des Objekts.</li>'
+    + '<li class="fuellen">Keine Finanzierungsbedingung im Kaufvertrag — der Vertrag steht nicht unter dem Vorbehalt einer Bankzusage.</li>'
+    + '<li class="fuellen">Übergabetermin nach Ihrem Wunsch — auch mehrere Monate nach Beurkundung, falls Sie Zeit brauchen.</li>'
+    + '<li class="fuellen">Räumung nicht erforderlich: Wir entkernen das Objekt ohnehin, zurückgelassenes Mobiliar und Hausrat sind für uns kein Thema.</li>'
+    + '<li class="fuellen">Kurzer Weg zum Notartermin — die Kalkulation steht, wir sind innerhalb weniger Tage beurkundungsbereit.</li></ul>'
+    + '<p style="font-size:12px;color:#556" class="fuellen">[Streichen, was nicht passt — ein Punkt, den man später zurücknehmen muss, kostet mehr als er einbringt.]</p>'
+    + '<p>Wir halten dieses Angebot bis zum <span class="fuellen">[Datum]</span>.</p>'
+    + '<div class="fuss">Diese Aufstellung ist eine Gesprächsgrundlage und kein rechtsverbindliches Angebot; ein Kaufvertrag über eine Immobilie bedarf der notariellen Beurkundung (§ 311b BGB). Die genannten Kosten beruhen auf einer Schätzung nach Aktenlage und stehen unter dem Vorbehalt der Besichtigung.</div>';
+  docOeffnen("Verhandlungsgrundlage", inhalt);
+}
+
+/* ── Start ───────────────────────────────────────────────────────────── */
+document.getElementById("kopfSub").textContent = "Fix & Flip — " + (DATEN.inputs.objektReferenz || DATEN.titel || "");
+document.getElementById("fussnote").innerHTML = "Standalone-Rechner, erzeugt am " + esc(DATEN.datum)
+  + ". Gelber Punkt = geschätzter oder nicht belegter Eingangswert. Bearbeitungsgebühr "
+  + fmtPct(MAPPE_BEARBEITUNGSGEBUEHR * 100) + " auf die Finanzierung ist in der Zinslast enthalten. Investorenprofil (EK, Kontokorrent) bleibt lokal in diesem Browser.";
+if (!standaloneLage()) document.getElementById("a2oDocBar").style.display = "none";
+render();
+</script>
+</body>
+</html>

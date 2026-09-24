@@ -1,0 +1,32 @@
+{
+  "name": "A²O Ankauf",
+  "short_name": "A²O Ankauf",
+  "description": "Ankaufskalkulation und FixFlip-Pro-Rechner aus Exposés, Mappen und WhatsApp",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f6f8",
+  "theme_color": "#1d4e6b",
+  "lang": "de",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "share_target": {
+    "action": "/teilen",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "dateien",
+          "accept": ["application/zip", "application/x-zip-compressed", "application/pdf", "image/*", "audio/*", "text/plain", ".zip", ".pdf", ".opus", ".ogg", ".m4a", ".txt"]
+        }
+      ]
+    }
+  }
+}

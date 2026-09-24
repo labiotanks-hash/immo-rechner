@@ -1,0 +1,383 @@
+// Oberfläche ohne Build-Schritt: Hash-Routing, DOM-Bausteine, Server-Sent Events.
+const app = document.getElementById("app");
+let offeneQuelle = null; // laufende EventSource der Objektseite
+
+// ── Helfer ──────────────────────────────────────────────────────────────────
+// replaceChildren ohne null/false und mit verschachtelten Listen
+function setze(knoten, ...kinder) {
+  knoten.replaceChildren(...kinder.flat(Infinity).filter((k) => k != null && k !== false));
+}
+
+function el(tag, attrs = {}, ...kinder) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (k === "class") e.className = v;
+    else if (k === "html") e.innerHTML = v;
+    else e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kinder.flat(Infinity)) if (k != null && k !== false) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return e;
+}
+
+async function api(pfad, optionen = {}) {
+  const o = { ...optionen, headers: { ...(optionen.body && !(optionen.body instanceof FormData) ? { "Content-Type": "application/json" } : {}), ...optionen.headers } };
+  if (o.body && !(o.body instanceof FormData) && typeof o.body !== "string") o.body = JSON.stringify(o.body);
+  const r = await fetch(pfad, o);
+  if (r.status === 401 && pfad !== "/api/login") { zeigeLogin(); throw new Error("Bitte anmelden."); }
+  const daten = r.headers.get("content-type")?.includes("json") ? await r.json() : null;
+  if (!r.ok) throw new Error(daten?.fehler || `Fehler ${r.status}`);
+  return daten;
+}
+
+function hochladen(id, dateien, fortschritt) {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    for (const f of dateien) fd.append("dateien", f, f.name);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/objekte/${id}/dateien`);
+    xhr.upload.onprogress = (e) => e.lengthComputable && fortschritt(e.loaded / e.total);
+    xhr.onload = () => (xhr.status < 300 ? resolve(JSON.parse(xhr.responseText)) : reject(new Error(JSON.parse(xhr.responseText || "{}").fehler || `Fehler ${xhr.status}`)));
+    xhr.onerror = () => reject(new Error("Netzwerkfehler beim Hochladen"));
+    xhr.send(fd);
+  });
+}
+
+const groesse = (b) => (b > 1e6 ? `${(b / 1e6).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
+const datum = (iso) => new Date(iso).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" });
+const SYMBOL = { pdf: "📄", bild: "🖼", audio: "🎤", whatsapp: "💬", zip: "🗜", text: "📝", docx: "📝", video: "🎞", sonstig: "📎" };
+const STATUS = { neu: "neu", laeuft: "läuft", fertig: "fertig", beantwortet: "beantwortet", fehler: "Fehler" };
+
+function fehlerbox(text) { return el("div", { class: "fehlerbox", role: "alert" }, text); }
+
+function navAktiv() {
+  const h = location.hash || "#/";
+  document.querySelectorAll(".kopf nav a").forEach((a) => a.classList.toggle("aktiv", a.getAttribute("href") === h || (h.startsWith("#/objekt") && a.getAttribute("href") === "#/")));
+}
+
+// ── Anmeldung ───────────────────────────────────────────────────────────────
+function zeigeLogin(meldung) {
+  if (offeneQuelle) { offeneQuelle.close(); offeneQuelle = null; }
+  document.getElementById("abmelden").hidden = true;
+  const fehler = el("div");
+  const pw = el("input", { type: "password", id: "pw", autocomplete: "current-password", required: true });
+  const form = el("form", { class: "karte login", onsubmit: async (e) => {
+    e.preventDefault();
+    setze(fehler);
+    try { await api("/api/login", { method: "POST", body: { passwort: pw.value } }); route(); }
+    catch (err) { fehler.append(fehlerbox(err.message)); }
+  } },
+  el("h1", {}, "Anmelden"),
+  el("p", { class: "unter" }, meldung || "Team-Passwort für die A²O-Ankaufskalkulation."),
+  fehler,
+  el("label", { class: "feld", for: "pw" }, "Passwort"), pw,
+  el("div", { style: "margin-top:14px" }, el("button", { class: "knopf", type: "submit" }, "Anmelden")));
+  setze(app, form);
+  pw.focus();
+}
+
+// ── Objektliste ─────────────────────────────────────────────────────────────
+async function zeigeListe() {
+  const objekte = await api("/api/objekte");
+  const name = el("input", { type: "text", id: "neuName", placeholder: "z. B. Musterstraße 1, Musterstadt" });
+  const notiz = el("textarea", { id: "neuNotiz", placeholder: "Was wollt ihr wissen? z. B. „Einstand über die Bank 0,9–1,0 Mio — was bleibt bei Aufteilung, was bei Globalverkauf? Bankgespräch morgen.“" });
+  const neu = el("form", { class: "karte", onsubmit: async (e) => {
+    e.preventDefault();
+    const m = await api("/api/objekte", { method: "POST", body: { name: name.value, notizen: notiz.value } });
+    location.hash = `#/objekt/${m.id}`;
+  } },
+  el("h2", {}, "Neues Objekt"),
+  el("label", { class: "feld", for: "neuName" }, "Objekt"), name,
+  el("label", { class: "feld", for: "neuNotiz" }, "Frage an Claude (optional)"), notiz,
+  el("div", { style: "margin-top:12px" }, el("button", { class: "knopf", type: "submit" }, "Anlegen und Unterlagen hochladen")));
+
+  const liste = objekte.length
+    ? el("ul", { class: "liste" }, objekte.map((o) => el("li", {},
+        el("a", { class: "objekt-link", href: `#/objekt/${o.id}` },
+          el("div", { class: "symbol" }, "🏠"),
+          el("div", { class: "inhalt" }, el("div", { class: "titel" }, o.name),
+            el("div", { class: "info" }, `${datum(o.erstellt)} · ${o.quellen} Quellen · ${o.dokumente} Dokumente`))),
+        el("span", { class: `marke-status ${o.status}` }, STATUS[o.status] || o.status))))
+    : el("div", { class: "leer" }, "Noch keine Objekte. Lege oben das erste an.");
+
+  setze(app, 
+    el("h1", {}, "Objekte"),
+    el("p", { class: "unter" }, "Exposés, Mappen, WhatsApp-Verläufe und Sprachnachrichten hochladen — Claude recherchiert den Markt, rechnet mit FixFlip Pro und erstellt Ankaufskalkulation und Rechner."),
+    el("div", { class: "raster" }, el("div", { class: "karte" }, el("h2", {}, "Alle Objekte"), liste), neu));
+}
+
+// ── Objekt ──────────────────────────────────────────────────────────────────
+async function zeigeObjekt(id) {
+  let o = await api(`/api/objekte/${id}`);
+  const status = await api("/api/status").catch(() => ({}));
+
+  const kopf = el("div");
+  const quellenKarte = el("section", { class: "karte" });
+  const auftragKarte = el("section", { class: "karte" });
+  const fortschrittKarte = el("section", { class: "karte" });
+  const dokumenteKarte = el("section", { class: "karte dokumente" });
+  const gespraechKarte = el("section", { class: "karte" });
+
+  function zeichneKopf() {
+    setze(kopf, 
+      el("div", { class: "zeile" },
+        el("h1", { class: "wachsen" }, o.name),
+        el("span", { class: `marke-status ${o.laeuft ? "laeuft" : o.status}` }, o.laeuft ? "läuft" : (STATUS[o.status] || o.status))),
+      el("p", { class: "unter" }, `Angelegt ${datum(o.erstellt)}`));
+  }
+
+  function zeichneQuellen() {
+    const eingabe = el("input", { type: "file", multiple: true, accept: ".pdf,.zip,.txt,.md,.docx,.jpg,.jpeg,.png,.webp,.opus,.ogg,.m4a,.mp3,.aac,.wav,.amr,application/pdf,application/zip,image/*,audio/*,text/plain" });
+    const info = el("div", { class: "hinweis" });
+    const ablage = el("label", { class: "ablage" },
+      eingabe,
+      el("div", {}, el("b", {}, "Dateien hierher ziehen oder antippen")),
+      el("div", { class: "hinweis" }, "Exposés und Mappen (PDF), Fotos, Sprachnachrichten, Text, WhatsApp-Export (ZIP „mit Medien“)"));
+    const senden = async (dateien) => {
+      if (!dateien.length) return;
+      info.textContent = `Lade ${dateien.length} Datei(en) hoch …`;
+      try {
+        await hochladen(id, dateien, (p) => { info.textContent = `Hochladen … ${Math.round(p * 100)} %`; });
+        info.textContent = "";
+        o = await api(`/api/objekte/${id}`);
+        zeichneQuellen();
+      } catch (err) { setze(info, fehlerbox(err.message)); }
+    };
+    eingabe.addEventListener("change", () => senden([...eingabe.files]));
+    ablage.addEventListener("dragover", (e) => { e.preventDefault(); ablage.classList.add("drueber"); });
+    ablage.addEventListener("dragleave", () => ablage.classList.remove("drueber"));
+    ablage.addEventListener("drop", (e) => { e.preventDefault(); ablage.classList.remove("drueber"); senden([...e.dataTransfer.files]); });
+
+    const oben = o.quellen.filter((q) => !q.herkunft);
+    const kinder = (q) => o.quellen.filter((k) => k.herkunft === q.id);
+    const zeile = (q) => {
+      const k = kinder(q);
+      const teile = [q.art === "whatsapp" ? `WhatsApp${q.gruppe ? ` „${q.gruppe}“` : ""}` : q.art, groesse(q.groesse)];
+      if (k.length) {
+        const n = (a) => k.filter((x) => x.art === a).length;
+        teile.push([n("audio") && `${n("audio")} Sprachnachr.`, n("pdf") && `${n("pdf")} PDF`, n("bild") && `${n("bild")} Bilder`].filter(Boolean).join(", "));
+      }
+      if (q.gesendet) teile.push("an Claude übergeben");
+      const transkripte = [q, ...k].filter((x) => x.art === "audio" && (x.transkript || x.transkriptFehler));
+      return el("li", {},
+        el("div", { class: "symbol" }, SYMBOL[q.art] || "📎"),
+        el("div", { class: "inhalt" },
+          el("div", { class: "titel" }, q.datei),
+          el("div", { class: "info" }, teile.filter(Boolean).join(" · ")),
+          transkripte.length ? el("details", { class: "transkript" }, el("summary", {}, `${transkripte.length} Transkript(e) ansehen`),
+            transkripte.map((t) => el("p", {}, `${t.anhangName || t.datei}: ${t.transkript || `⚠ ${t.transkriptFehler}`}`))) : null,
+          (q.uploadFehler || q.transkriptFehler) && !transkripte.length ? el("div", { class: "info gefahr" }, q.uploadFehler || q.transkriptFehler) : null),
+        !q.gesendet ? el("button", { class: "leise", title: "Entfernen", "aria-label": `${q.datei} entfernen`, onclick: async () => {
+          await api(`/api/objekte/${id}/quellen/${q.id}`, { method: "DELETE" });
+          o = await api(`/api/objekte/${id}`); zeichneQuellen();
+        } }, "✕") : null);
+    };
+
+    const hatChat = o.quellen.some((q) => q.art === "whatsapp" || (q.art === "zip" && !q.entpackt) || /whatsapp/i.test(q.datei));
+    const von = el("input", { type: "date", value: o.zeitraum?.von || "" });
+    const bis = el("input", { type: "date", value: o.zeitraum?.bis || "" });
+    const zeitraum = hatChat ? el("div", {},
+      el("label", { class: "feld" }, "WhatsApp: nur Nachrichten aus diesem Zeitraum (leer = alle)"),
+      el("div", { class: "zeile" }, von, el("span", {}, "bis"), bis,
+        el("button", { class: "knopf zweit klein", onclick: async () => {
+          o = { ...o, ...(await api(`/api/objekte/${id}`, { method: "PATCH", body: { zeitraum: { von: von.value, bis: bis.value } } })) };
+        } }, "Übernehmen"))) : null;
+
+    setze(quellenKarte, 
+      el("h2", {}, "Quellen"),
+      ablage, info,
+      oben.length ? el("ul", { class: "liste" }, oben.map(zeile)) : null,
+      zeitraum,
+      status.transkription === false && o.quellen.some((q) => q.art === "audio" || q.art === "whatsapp" || q.art === "zip")
+        ? el("div", { class: "hinweis" }, "⚠ Sprachnachrichten werden nicht transkribiert: TRANSCRIBE_URL ist nicht eingerichtet (siehe README).") : null);
+  }
+
+  function zeichneAuftrag() {
+    if (o.laeufe.length) { auftragKarte.hidden = true; return; }
+    auftragKarte.hidden = false;
+    const notiz = el("textarea", { id: "notiz" }, o.notizen || "");
+    const fehler = el("div");
+    const start = el("button", { class: "knopf", disabled: o.laeuft || !o.quellen.length && !o.notizen, onclick: async () => {
+      setze(fehler);
+      start.disabled = true;
+      try {
+        await api(`/api/objekte/${id}`, { method: "PATCH", body: { notizen: notiz.value } });
+        await api(`/api/objekte/${id}/analyse`, { method: "POST", body: {} });
+        o.laeuft = true; zeichneAlles();
+      } catch (err) { fehler.append(fehlerbox(err.message)); start.disabled = false; }
+    } }, "Ankaufskalkulation erstellen");
+    notiz.addEventListener("input", () => { start.disabled = o.laeuft || (!o.quellen.length && !notiz.value.trim()); });
+    setze(auftragKarte, 
+      el("h2", {}, "Auftrag an Claude"), fehler,
+      el("label", { class: "feld", for: "notiz" }, "Was sollen Kalkulation und Kurzantwort beantworten? Zahlen und Aussagen aus Telefonaten gern dazuschreiben."),
+      notiz,
+      el("div", { class: "zeile", style: "margin-top:12px" }, start,
+        el("span", { class: "hinweis" }, `${status.modell || "Claude"} mit Websuche · rechnet mit FixFlip Pro (${status.rechenkern === "original" ? "Original" : "Port"}) · Dauer meist 3–10 Minuten`)));
+  }
+
+  let aktuellerText = null, aktuelleGedanken = null;
+  const protokoll = el("div", { class: "protokoll" });
+  function ereignis(e) {
+    const unten = protokoll.scrollHeight - protokoll.scrollTop - protokoll.clientHeight < 40;
+    if (e.typ === "text") {
+      if (!aktuellerText) { aktuellerText = el("div", { class: "claude" }); protokoll.append(aktuellerText); }
+      aktuellerText.textContent += e.text;
+    } else if (e.typ === "denken") {
+      if (!aktuelleGedanken) {
+        const inhalt = el("div");
+        protokoll.append(el("details", {}, el("summary", {}, "Überlegungen"), inhalt));
+        aktuelleGedanken = inhalt;
+      }
+      aktuelleGedanken.textContent += e.text;
+    } else if (e.typ === "absatz") {
+      aktuellerText = null; aktuelleGedanken = null;
+    } else if (["status", "werkzeug", "fehler", "fertig", "dokumente"].includes(e.typ)) {
+      aktuellerText = null; aktuelleGedanken = null;
+      const z = { status: "·", werkzeug: e.name === "web_search" ? "🔎" : e.name === "web_fetch" ? "🌐" : "🧮", fehler: "⚠", fertig: "✓", dokumente: "📄" }[e.typ];
+      const text = e.typ === "fertig" ? "Fertig." : e.typ === "dokumente" ? `${e.dateien.length} Dokumente erstellt` : e.text;
+      protokoll.append(el("div", { class: `ereignis${e.typ === "fehler" ? " gefahr" : ""}` }, el("span", { class: "z" }, z), el("span", {}, text)));
+    }
+    if (unten) protokoll.scrollTop = protokoll.scrollHeight;
+    if (e.typ === "fertig" || e.typ === "fehler" || e.typ === "dokumente") aktualisiere();
+  }
+
+  function zeichneFortschritt() {
+    const zeigen = o.laeuft || protokoll.childElementCount;
+    fortschrittKarte.hidden = !zeigen;
+    setze(fortschrittKarte, el("h2", {}, "Fortschritt"), o.laeuft ? el("div", { class: "laeuft-balken" }) : null, protokoll);
+  }
+
+  function zeichneDokumente() {
+    const d = o.dokumente;
+    dokumenteKarte.hidden = !d.length;
+    if (!d.length) return;
+    const link = (datei, text, zweit) => el("a", { class: `knopf klein${zweit ? " zweit" : ""}`, href: `/api/objekte/${id}/datei/${encodeURIComponent(datei)}`, target: "_blank", rel: "noopener" }, text);
+    const finde = (art, fassung, endung) => d.find((x) => x.art === art && x.fassung === fassung && x.datei.endsWith(endung));
+    const gruppe = (titel, ...knoepfe) => knoepfe.some(Boolean) ? [el("div", { class: "gruppe-titel" }, titel), el("div", {}, knoepfe)] : [];
+    const intPdf = finde("ankaufskalkulation", "intern", ".pdf"), intHtml = finde("ankaufskalkulation", "intern", ".html");
+    const extPdf = finde("ankaufskalkulation", "extern", ".pdf"), extHtml = finde("ankaufskalkulation", "extern", ".html");
+    setze(dokumenteKarte, 
+      el("h2", {}, "Dokumente"),
+      ...gruppe("Ankaufskalkulation intern (gelb markiert)", intPdf && link(intPdf.datei, "PDF"), intHtml && link(intHtml.datei, "HTML", true)),
+      ...gruppe("Ankaufskalkulation für die Bank (ohne Markierung)", extPdf && link(extPdf.datei, "PDF"), extHtml && link(extHtml.datei, "HTML", true)),
+      ...gruppe("FixFlip-Pro-Rechner", ...d.filter((x) => x.art === "rechner").map((x) => link(x.datei, `Exit ${x.exit}: ${x.datei.replace(/^FixFlipPro_Rechner_.*?_([A-Z])_/, "").replace(/\.html$/, "").replace(/_/g, " ")}`))),
+      el("div", { class: "gruppe-titel" }, "Alles"),
+      el("div", {}, el("a", { class: "knopf klein zweit", href: `/api/objekte/${id}/zip` }, "Objektordner als ZIP (für Dropbox)"),
+        link("Quellen/Quellen-Uebersicht.md", "Quellen-Übersicht", true)),
+      el("p", { class: "hinweis" }, `Stand ${datum(d[0].erstellt)}`));
+  }
+
+  function zeichneGespraech() {
+    const g = o.gespraech.filter((x) => x.antwort || x.fehler || x.status === "laeuft");
+    gespraechKarte.hidden = !o.laeufe.length;
+    if (!o.laeufe.length) return;
+    const frage = el("textarea", { id: "rueckfrage", placeholder: "z. B. „Rechne zusätzlich mit 950.000 € und einer Haltedauer von 24 Monaten für die Aufteilung.“ oder „Was passiert, wenn die Miete 10 % niedriger ist?“" });
+    const fehler = el("div");
+    const senden = el("button", { class: "knopf", disabled: o.laeuft, onclick: async () => {
+      if (!frage.value.trim()) return frage.focus();
+      setze(fehler);
+      senden.disabled = true;
+      try {
+        await api(`/api/objekte/${id}/analyse`, { method: "POST", body: { nachricht: frage.value } });
+        o.laeuft = true; setze(protokoll); zeichneAlles();
+      } catch (err) { fehler.append(fehlerbox(err.message)); senden.disabled = false; }
+    } }, "Senden");
+    setze(gespraechKarte, 
+      el("h2", {}, "Gespräch"),
+      g.map((x) => [
+        el("div", { class: "frage" }, x.frage ? `Rückfrage ${datum(x.start)}: ${x.frage}` : `Erste Analyse ${datum(x.start)}`),
+        x.antwort ? el("div", { class: "antwort" }, x.antwort) : x.fehler ? fehlerbox(x.fehler) : el("div", { class: "hinweis" }, "läuft …"),
+      ]),
+      o.status === "fehler" && !o.laeuft ? el("div", { style: "margin:10px 0" }, el("button", { class: "knopf zweit klein", onclick: async (ev) => {
+        ev.target.disabled = true;
+        await api(`/api/objekte/${id}/analyse`, { method: "POST", body: { nachricht: "Der letzte Lauf wurde abgebrochen. Bitte mach dort weiter und erstelle die Dokumente." } });
+        o.laeuft = true; setze(protokoll); zeichneAlles();
+      } }, "Erneut versuchen")) : null,
+      el("label", { class: "feld", for: "rueckfrage" }, "Rückfrage oder Änderung — neue Dateien oben hochladen, sie gehen mit"),
+      frage, fehler,
+      el("div", { class: "zeile", style: "margin-top:10px" }, senden,
+        el("button", { class: "leise gefahr", style: "margin-left:auto", onclick: async () => {
+          if (!confirm(`Objekt „${o.name}“ mit allen Dateien löschen?`)) return;
+          await api(`/api/objekte/${id}`, { method: "DELETE" });
+          location.hash = "#/";
+        } }, "Objekt löschen")));
+  }
+
+  function zeichneAlles() {
+    zeichneKopf(); zeichneQuellen(); zeichneAuftrag(); zeichneFortschritt(); zeichneDokumente(); zeichneGespraech();
+  }
+
+  async function aktualisiere() {
+    o = await api(`/api/objekte/${id}`);
+    zeichneAlles();
+  }
+
+  zeichneAlles();
+  setze(app, kopf, el("div", { class: "raster" },
+    el("div", {}, auftragKarte, fortschrittKarte, dokumenteKarte, gespraechKarte),
+    el("div", {}, quellenKarte)));
+
+  if (offeneQuelle) offeneQuelle.close();
+  offeneQuelle = new EventSource(`/api/objekte/${id}/ereignisse`);
+  offeneQuelle.onmessage = (m) => { ereignis(JSON.parse(m.data)); if (!fortschrittKarte.hidden || o.laeuft) zeichneFortschritt(); };
+}
+
+// ── Einstellungen ───────────────────────────────────────────────────────────
+async function zeigeEinstellungen() {
+  const [e, s] = await Promise.all([api("/api/einstellungen"), api("/api/status")]);
+  const feld = (id, label, wert, typ = "text") => [el("label", { class: "feld", for: id }, label), el("input", { type: typ, id, value: wert })];
+  const ha = el("textarea", { id: "hausannahmen", style: "min-height:260px" }, e.hausannahmen);
+  const meldung = el("div", { class: "hinweis" });
+  const form = el("form", { class: "karte", onsubmit: async (ev) => {
+    ev.preventDefault();
+    const v = (id) => document.getElementById(id).value;
+    await api("/api/einstellungen", { method: "PUT", body: {
+      firma: v("firma"), absender: v("absender"), hausannahmen: ha.value,
+      investorenprofil: { ekVerfuegbar: Number(v("ek")), kkRahmen: Number(v("kk")), kkZins: Number(v("kkzins")) },
+    } });
+    meldung.textContent = "Gespeichert — gilt ab der nächsten Analyse.";
+  } },
+  el("h2", {}, "Hausannahmen"),
+  el("p", { class: "hinweis" }, "Diese Sätze bekommt Claude bei jeder Analyse mit — wie die Projektanweisungen in Claude."),
+  ha,
+  ...feld("firma", "Firma", e.firma),
+  ...feld("absender", "Absenderzeile der Bankfassung", e.absender),
+  el("h2", { style: "margin-top:18px" }, "Investorenprofil (für die Rechner)"),
+  ...feld("ek", "Eigenkapital verfügbar (€)", e.investorenprofil.ekVerfuegbar, "number"),
+  ...feld("kk", "Kontokorrent-Rahmen (€)", e.investorenprofil.kkRahmen, "number"),
+  ...feld("kkzins", "Kontokorrent-Zins (%)", e.investorenprofil.kkZins, "number"),
+  el("div", { class: "zeile", style: "margin-top:14px" }, el("button", { class: "knopf", type: "submit" }, "Speichern"), meldung));
+  const ja = (b) => el("span", { class: b ? "ok" : "nein" }, b ? "ja" : "nein");
+  const statusKarte = el("section", { class: "karte status-liste" },
+    el("h2", {}, "System"),
+    el("div", {}, el("span", {}, "Modell"), el("span", {}, `${s.modell} · Effort ${s.effort}`)),
+    el("div", {}, el("span", {}, "API-Schlüssel gesetzt"), ja(s.apiKey)),
+    el("div", {}, el("span", {}, "Rechenkern"), el("span", {}, s.rechenkern === "original" ? "FixFlip Pro index.html (Original)" : "eingebauter Port")),
+    el("div", {}, el("span", {}, "Rechner über eure build.py"), ja(s.originalBuild)),
+    el("div", {}, el("span", {}, "Sprachnachrichten transkribieren"), ja(s.transkription)),
+    el("div", {}, el("span", {}, "PDF-Erzeugung"), ja(s.pdf)));
+  setze(app, el("h1", {}, "Einstellungen"), el("div", { class: "raster" }, form, statusKarte));
+}
+
+// ── Routing ─────────────────────────────────────────────────────────────────
+async function route() {
+  navAktiv();
+  if (offeneQuelle && !location.hash.startsWith("#/objekt/")) { offeneQuelle.close(); offeneQuelle = null; }
+  const h = location.hash || "#/";
+  try {
+    document.getElementById("abmelden").hidden = false;
+    const m = h.match(/^#\/objekt\/([A-Za-z0-9_-]+)/);
+    if (m) await zeigeObjekt(m[1]);
+    else if (h === "#/einstellungen") await zeigeEinstellungen();
+    else await zeigeListe();
+  } catch (err) {
+    if (err.message !== "Bitte anmelden.") setze(app, fehlerbox(err.message));
+  }
+}
+
+document.getElementById("abmelden").addEventListener("click", async () => { await api("/api/logout", { method: "POST" }); zeigeLogin(); });
+window.addEventListener("hashchange", route);
+if (new URLSearchParams(location.search).get("geteilt") === "anmelden") zeigeLogin("Bitte anmelden und dann erneut aus WhatsApp teilen.");
+else route();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});

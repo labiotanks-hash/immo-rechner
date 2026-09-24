@@ -1,0 +1,6 @@
+node_modules/
+daten/
+.env
+fixflip-pro/
+*.log
+.DS_Store
