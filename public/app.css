@@ -20,7 +20,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .kopf { display: flex; align-items: center; gap: 16px; padding: 10px 16px; padding-top: max(10px, env(safe-area-inset-top));
   background: var(--karte); border-bottom: 1px solid var(--linie); position: sticky; top: 0; z-index: 10; }
 .marke { display: flex; align-items: center; gap: 9px; text-decoration: none; color: var(--text); font-size: 17px; white-space: nowrap; }
-@media (max-width: 520px) { .kopf { gap: 10px; } .kopf nav { gap: 10px; font-size: 13px; } }
+@media (max-width: 600px) { .kopf { flex-wrap: wrap; row-gap: 6px; } .kopf nav { margin-left: 0; width: 100%; justify-content: space-between; gap: 8px; font-size: 13.5px; } }
 .marke svg { width: 28px; height: 28px; color: #1d4e6b; }
 .kopf nav { margin-left: auto; display: flex; gap: 14px; align-items: center; font-size: 14px; }
 .kopf nav a { text-decoration: none; color: var(--leise); }
@@ -99,3 +99,21 @@ details.transkript p { white-space: pre-wrap; margin: 6px 0 0; padding: 8px 10px
 .status-liste div { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--linie); gap: 12px; }
 .ok { color: var(--gruen); } .nein { color: var(--rot); }
 [hidden] { display: none !important; }
+
+/* WhatsApp-Auswahl */
+.stapel { display: grid; gap: 16px; align-content: start; }
+select { width: 100%; padding: 8px 10px; border: 1px solid var(--linie); border-radius: 8px; background: var(--karte, #fff); }
+.wa-auswahl { margin-top: 12px; border-top: 1px solid var(--linie); padding-top: 4px; }
+.wa-liste { max-height: 60vh; overflow-y: auto; margin-top: 10px; border: 1px solid var(--linie); border-radius: 10px; }
+.wa-tag { position: sticky; top: 0; display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: var(--akzent-hell); font-size: 13px; font-weight: 600; z-index: 1; }
+.wa-nachricht { display: flex; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--linie); cursor: pointer; align-items: flex-start; }
+.wa-nachricht input { margin-top: 3px; flex: none; width: 18px; height: 18px; }
+.wa-inhalt { min-width: 0; flex: 1; }
+.wa-kopf { font-size: 12px; color: var(--leise); }
+.wa-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; max-height: 12em; overflow: hidden; }
+.wa-bild { max-width: 160px; max-height: 120px; border-radius: 6px; display: block; margin: 4px 0; object-fit: cover; }
+.wa-inhalt audio { width: 100%; max-width: 320px; height: 36px; margin: 4px 0; }
+.wa-transkript { font-size: 13px; color: var(--leise); font-style: italic; }
+.wa-fuss { margin-top: 8px; }
+.wa-qr { width: 100%; max-width: 280px; image-rendering: pixelated; border: 8px solid #fff; border-radius: 8px; }
+.knopf.klein, .leise.klein { font-size: 12px; padding: 3px 8px; }

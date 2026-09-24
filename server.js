@@ -22,6 +22,7 @@ import {
   angemeldet, nurAngemeldet, nurAdmin, emailAusSupabaseToken, setzeSitzung, beendeSitzung, loginGesperrt, loginFehlversuch,
 } from "./lib/auth.js";
 import { ladeZugang, darfRein, zugangsliste, fuegeHinzu, entferne } from "./lib/zugang.js";
+import { waStatus, waNachrichten, waMedium, qrPfad, exportiereAlsZip, starteHintergrund } from "./lib/whatsapp-live.js";
 
 if (config.ohneLogin) {
   console.warn("⚠ Ohne Login gestartet (UNSICHER_OHNE_LOGIN=1) — nur lokal verwenden.");
@@ -226,6 +227,67 @@ app.get("/api/objekte/:id/zip", asyncRoute(async (req, res) => {
 app.get("/api/einstellungen", asyncRoute(async (req, res) => res.json(await ladeEinstellungen())));
 app.put("/api/einstellungen", asyncRoute(async (req, res) => res.json(await speichereEinstellungen(req.body || {}))));
 
+// ── WhatsApp-Gruppe live (Bridge) ──────────────────────────────────────────
+app.get("/api/whatsapp", asyncRoute(async (req, res) => {
+  const s = await waStatus();
+  if (!req.nutzer.admin) delete s.nummer;
+  res.json(s);
+}));
+
+app.get("/api/whatsapp/qr.png", nurAdmin, asyncRoute(async (req, res) => {
+  const p = await qrPfad();
+  if (!p) return res.status(404).json({ fehler: "Gerade kein QR-Code — die Bridge ist schon gekoppelt oder startet neu." });
+  res.set("Cache-Control", "no-store").sendFile(p);
+}));
+
+const tagOderNull = (x) => (typeof x === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x) ? x : null);
+
+app.get("/api/whatsapp/nachrichten", asyncRoute(async (req, res) => {
+  const chat = String(req.query.chat || "");
+  if (!/^[\d-]+@g\.us$/.test(chat)) return res.status(400).json({ fehler: "Gruppe fehlt." });
+  res.json(await waNachrichten({ chat, von: tagOderNull(req.query.von), bis: tagOderNull(req.query.bis) }));
+}));
+
+app.get("/api/whatsapp/medien/:chat/:mid", asyncRoute(async (req, res) => {
+  const m = await waMedium(req.params.chat, req.params.mid);
+  if (!m) return res.status(404).json({ fehler: "Datei nicht (mehr) vorhanden." });
+  // Vorschau im Browser, aber nie als aktive Seite (HTML/SVG aus dem Chat)
+  res.set({ "Content-Security-Policy": "sandbox", "Cache-Control": "private, max-age=86400" });
+  if (m.name) res.attachment(m.name);
+  if (/^(image\/(jpeg|png|webp|gif)|audio\/|video\/|application\/pdf)/.test(m.mime || "")) res.set("Content-Disposition", "inline");
+  res.type(m.mime || "application/octet-stream").sendFile(m.pfad);
+}));
+
+// Ausgewählte Nachrichten als Quelle ins Objekt übernehmen (neues oder bestehendes)
+async function uebernimmWhatsApp(objektId, body) {
+  const chat = String(body?.chat || "");
+  const ids = Array.isArray(body?.ids) ? body.ids : [];
+  if (!/^[\d-]+@g\.us$/.test(chat) || !ids.length) throw Object.assign(new Error("Bitte Nachrichten auswählen."), { status: 400 });
+  const gruppe = (await waStatus()).gruppen?.find((g) => g.jid === chat)?.name;
+  const exp = await exportiereAlsZip({ chat, ids, gruppe });
+  await nimmDateiAuf(objektId, exp.name, exp.puffer);
+  return { nachrichten: exp.nachrichten, medien: exp.medien, fehlend: exp.fehlend };
+}
+
+app.post("/api/objekte/:id/whatsapp", asyncRoute(async (req, res) => {
+  if (laeuft(req.params.id)) return res.status(409).json({ fehler: "Analyse läuft noch." });
+  await ladeMeta(req.params.id);
+  const ergebnis = await uebernimmWhatsApp(req.params.id, req.body);
+  res.json({ ...ergebnis, objekt: oeffentlich(await ladeMeta(req.params.id)) });
+}));
+
+app.post("/api/whatsapp/objekt", asyncRoute(async (req, res) => {
+  const name = String(req.body?.name || "").trim().slice(0, 160) || "Aus WhatsApp";
+  const meta = await neuesObjekt(name, String(req.body?.notizen || "").slice(0, 20000));
+  try {
+    const ergebnis = await uebernimmWhatsApp(meta.id, req.body);
+    res.status(201).json({ ...ergebnis, id: meta.id });
+  } catch (err) {
+    await loescheObjekt(meta.id);
+    throw err;
+  }
+}));
+
 // ── Teilen aus WhatsApp (Android: App installieren, dann „Teilen → A²O Immo-Rechner“) ──
 app.post("/teilen", (req, res, next) => (angemeldet(req) ? next() : res.redirect(303, "/?geteilt=anmelden")),
   upload.array("dateien"), asyncRoute(async (req, res) => {
@@ -249,6 +311,7 @@ app.use((err, req, res, _next) => {
 });
 
 await markiereUnterbrocheneLaeufe((await listeObjekte()).map((o) => o.id));
+starteHintergrund();
 
 app.listen(config.port, () => {
   console.log(`A²O Immo-Rechner läuft auf http://localhost:${config.port}`);

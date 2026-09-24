@@ -153,7 +153,7 @@ function zeigeCode(adresse) {
 
 // ── Objektliste ─────────────────────────────────────────────────────────────
 async function zeigeListe() {
-  const objekte = await api("/api/objekte");
+  const [objekte, wa] = await Promise.all([api("/api/objekte"), api("/api/whatsapp").catch(() => ({}))]);
   const name = el("input", { type: "text", id: "neuName", placeholder: "z. B. Musterstraße 1, Musterstadt" });
   const notiz = el("textarea", { id: "neuNotiz", placeholder: "Was wollt ihr wissen? z. B. „Einstand über die Bank 0,9–1,0 Mio — was bleibt bei Aufteilung, was bei Globalverkauf? Bankgespräch morgen.“" });
   const neu = el("form", { class: "karte", onsubmit: async (e) => {
@@ -175,16 +175,148 @@ async function zeigeListe() {
         el("span", { class: `marke-status ${o.status}` }, STATUS[o.status] || o.status))))
     : el("div", { class: "leer" }, "Noch keine Objekte. Lege oben das erste an.");
 
+  let waKarte = null;
+  if (wa.gruppen?.length) {
+    const panel = el("div");
+    const waName = el("input", { type: "text", id: "waName", placeholder: "z. B. Musterstraße 1, Musterstadt" });
+    waKarte = el("section", { class: "karte" },
+      el("h2", {}, `Neu aus „${wa.gruppen[0].name}“`),
+      el("p", { class: "hinweis" }, "Nachrichten, Exposés und Sprachnachrichten aus der Gruppe auswählen — daraus wird ein neues Objekt."),
+      el("button", { class: "knopf zweit", type: "button", onclick: () => {
+        if (panel.childNodes.length) { setze(panel); return; }
+        setze(panel, waAuswahl(wa, {
+          knopfText: "Objekt anlegen",
+          extra: [el("label", { class: "feld", for: "waName" }, "Objekt"), waName],
+          uebernehmen: async (auswahl) => {
+            const r = await api("/api/whatsapp/objekt", { method: "POST", body: { ...auswahl, name: waName.value } });
+            location.hash = `#/objekt/${r.id}`;
+          },
+        }));
+      } }, "Nachrichten auswählen"),
+      panel);
+  }
+
   setze(app, 
     el("h1", {}, "Objekte"),
     el("p", { class: "unter" }, "Exposés, Mappen, WhatsApp-Verläufe und Sprachnachrichten hochladen — Claude recherchiert den Markt, rechnet mit FixFlip Pro und erstellt Ankaufskalkulation und Rechner."),
-    el("div", { class: "raster" }, el("div", { class: "karte" }, el("h2", {}, "Alle Objekte"), liste), neu));
+    el("div", { class: "raster" }, el("div", { class: "karte" }, el("h2", {}, "Alle Objekte"), liste), el("div", { class: "stapel" }, waKarte, neu)));
+}
+
+// ── Auswahl aus der WhatsApp-Gruppe ────────────────────────────────────────
+const tagIso = (d) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(d);
+const uhrzeit = (iso) => new Date(iso).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
+const tagTitel = (iso) => new Date(iso).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/Berlin" });
+const WA_SYMBOL = { text: "💬", bild: "🖼", audio: "🎤", video: "🎞", dokument: "📄" };
+
+// wa: Antwort von /api/whatsapp; uebernehmen({ chat, ids }) → Promise
+function waAuswahl(wa, { knopfText, uebernehmen, extra = null }) {
+  const gruppe = el("select", { id: "wa-gruppe" }, wa.gruppen.map((g) => el("option", { value: g.jid }, `${g.name} (${g.anzahl})`)));
+  const heute = new Date();
+  const von = el("input", { type: "date", value: tagIso(new Date(heute.getTime() - 2 * 86400000)) });
+  const bis = el("input", { type: "date", value: tagIso(heute) });
+  const liste = el("div", { class: "wa-liste" });
+  const fuss = el("div", { class: "zeile wa-fuss" });
+  const fehler = el("div");
+  let nachrichten = [];
+  const gewaehlt = new Set();
+
+  const zaehler = el("span", { class: "hinweis" });
+  const knopf = el("button", { class: "knopf", type: "button", onclick: async () => {
+    setze(fehler);
+    knopf.disabled = true;
+    try { await uebernehmen({ chat: gruppe.value, ids: nachrichten.filter((n) => gewaehlt.has(n.id)).map((n) => n.id) }); }
+    catch (err) { fehler.append(fehlerbox(err.message)); knopf.disabled = false; }
+  } }, knopfText);
+  const aktualisiere = () => {
+    zaehler.textContent = `${gewaehlt.size} von ${nachrichten.length} ausgewählt`;
+    knopf.disabled = !gewaehlt.size;
+  };
+
+  function inhalt(n) {
+    const url = `/api/whatsapp/medien/${encodeURIComponent(n.chat)}/${encodeURIComponent(n.id)}`;
+    const teile = [];
+    if (n.art === "bild" && n.datei) teile.push(el("a", { href: url, target: "_blank", rel: "noopener" }, el("img", { src: url, loading: "lazy", alt: "Foto", class: "wa-bild" })));
+    else if (n.art === "audio" && n.datei) {
+      teile.push(el("audio", { controls: true, preload: "none", src: url }));
+      teile.push(el("div", { class: "wa-transkript" }, n.transkript ? `„${n.transkript}“` : "Transkript folgt …"));
+    } else if (n.art !== "text") {
+      teile.push(n.datei ? el("a", { href: url, target: "_blank", rel: "noopener" }, n.dateiname || n.art)
+        : el("span", { class: "hinweis" }, `${n.dateiname || n.art} — ${n.dateiStatus === "fehler" ? "nicht mehr ladbar" : "wird noch geladen"}`));
+    }
+    if (n.text) teile.push(el("div", { class: "wa-text" }, n.text));
+    return teile;
+  }
+
+  function zeichne() {
+    if (!nachrichten.length) { setze(liste, el("div", { class: "leer" }, "Keine Nachrichten in diesem Zeitraum.")); setze(fuss); return; }
+    let tag = null;
+    const zeilen = [];
+    for (const n of nachrichten) {
+      const t = tagIso(new Date(n.zeit));
+      if (t !== tag) {
+        tag = t;
+        const dieses = nachrichten.filter((x) => tagIso(new Date(x.zeit)) === t);
+        zeilen.push(el("div", { class: "wa-tag" }, tagTitel(n.zeit),
+          el("button", { class: "leise klein", type: "button", onclick: () => {
+            const alle = dieses.every((x) => gewaehlt.has(x.id));
+            dieses.forEach((x) => (alle ? gewaehlt.delete(x.id) : gewaehlt.add(x.id)));
+            zeichne();
+          } }, "Tag an/aus")));
+      }
+      const box = el("input", { type: "checkbox", id: `wa-${n.id}` });
+      box.checked = gewaehlt.has(n.id);
+      box.addEventListener("change", () => { box.checked ? gewaehlt.add(n.id) : gewaehlt.delete(n.id); aktualisiere(); });
+      zeilen.push(el("label", { class: "wa-nachricht", for: `wa-${n.id}` }, box,
+        el("div", { class: "wa-inhalt" },
+          el("div", { class: "wa-kopf" }, `${WA_SYMBOL[n.art] || "📎"} ${uhrzeit(n.zeit)} · ${n.absender}`),
+          inhalt(n))));
+    }
+    setze(liste, zeilen);
+    setze(fuss,
+      el("button", { class: "leise", type: "button", onclick: () => { nachrichten.forEach((n) => gewaehlt.add(n.id)); zeichne(); } }, "Alle"),
+      el("button", { class: "leise", type: "button", onclick: () => { gewaehlt.clear(); zeichne(); } }, "Keine"),
+      zaehler);
+    aktualisiere();
+  }
+
+  async function lade() {
+    setze(fehler);
+    setze(liste, el("div", { class: "hinweis" }, "Lade Nachrichten …"));
+    try {
+      const q = new URLSearchParams({ chat: gruppe.value, von: von.value, bis: bis.value });
+      nachrichten = await api(`/api/whatsapp/nachrichten?${q}`);
+      gewaehlt.clear();
+      zeichne();
+    } catch (err) { setze(liste); fehler.append(fehlerbox(err.message)); }
+  }
+  [gruppe, von, bis].forEach((f) => f.addEventListener("change", lade));
+  lade();
+
+  return el("div", { class: "wa-auswahl" },
+    wa.gruppen.length > 1 ? [el("label", { class: "feld", for: "wa-gruppe" }, "Gruppe"), gruppe] : null,
+    el("label", { class: "feld" }, "Zeitraum"),
+    el("div", { class: "zeile" }, von, el("span", {}, "bis"), bis),
+    fehler, liste, fuss, extra,
+    el("div", { style: "margin-top:12px" }, knopf),
+    el("div", { class: "hinweis" }, "Fotos, PDFs und Sprachnachrichten kommen mit; Sprachnachrichten werden transkribiert."));
+}
+
+function waHinweis(wa) {
+  if (!wa?.eingerichtet) return null;
+  if (wa.zustand === "verbunden" && wa.gruppen?.length) return null;
+  if (wa.zustand === "verbunden" && wa.gruppeFehlt) return "WhatsApp verbunden, aber die Firmennummer ist nicht in der Gruppe.";
+  if (wa.zustand === "koppeln" || wa.zustand === "abgemeldet" || wa.zustand === "abgelaufen") return "WhatsApp ist noch nicht gekoppelt (Admin: Seite „Zugang“).";
+  if (wa.zustand === "getrennt") return "WhatsApp-Verbindung gerade getrennt — verbindet sich selbst neu.";
+  return null;
 }
 
 // ── Objekt ──────────────────────────────────────────────────────────────────
 async function zeigeObjekt(id) {
   let o = await api(`/api/objekte/${id}`);
   const status = await api("/api/status").catch(() => ({}));
+  const wa = await api("/api/whatsapp").catch(() => ({}));
+  const waPanel = el("div");
+  let waMeldung = "";
 
   const kopf = el("div");
   const quellenKarte = el("section", { class: "karte" });
@@ -203,7 +335,8 @@ async function zeigeObjekt(id) {
 
   function zeichneQuellen() {
     const eingabe = el("input", { type: "file", multiple: true, accept: ".pdf,.zip,.txt,.md,.docx,.jpg,.jpeg,.png,.webp,.opus,.ogg,.m4a,.mp3,.aac,.wav,.amr,application/pdf,application/zip,image/*,audio/*,text/plain" });
-    const info = el("div", { class: "hinweis" });
+    const info = el("div", { class: "hinweis" }, waMeldung);
+    waMeldung = "";
     const ablage = el("label", { class: "ablage" },
       eingabe,
       el("div", {}, el("b", {}, "Dateien hierher ziehen oder antippen")),
@@ -258,9 +391,24 @@ async function zeigeObjekt(id) {
           o = { ...o, ...(await api(`/api/objekte/${id}`, { method: "PATCH", body: { zeitraum: { von: von.value, bis: bis.value } } })) };
         } }, "Übernehmen"))) : null;
 
+    const waKnopf = wa.gruppen?.length && !o.laeuft ? el("button", { class: "knopf zweit", type: "button", onclick: () => {
+      if (waPanel.childNodes.length) { setze(waPanel); return; }
+      setze(waPanel, waAuswahl(wa, { knopfText: "Ins Objekt übernehmen", uebernehmen: async (auswahl) => {
+        const r = await api(`/api/objekte/${id}/whatsapp`, { method: "POST", body: auswahl });
+        o = { ...o, ...r.objekt };
+        setze(waPanel);
+        waMeldung = `${r.nachrichten} Nachrichten übernommen${r.medien ? `, davon ${r.medien} mit Datei` : ""}${r.fehlend ? ` — ${r.fehlend} Datei(en) nicht mehr ladbar` : ""}.`;
+        zeichneQuellen();
+      } }));
+    } }, `💬 Aus „${wa.gruppen[0].name}“ übernehmen`) : null;
+    const waText = waHinweis(wa);
+
     setze(quellenKarte, 
       el("h2", {}, "Quellen"),
       ablage, info,
+      waKnopf ? el("div", { style: "margin-top:10px" }, waKnopf) : null,
+      waText ? el("div", { class: "hinweis" }, `⚠ ${waText}`) : null,
+      waPanel,
       oben.length ? el("ul", { class: "liste" }, oben.map(zeile)) : null,
       zeitraum,
       status.transkription === false && o.quellen.some((q) => q.art === "audio" || q.art === "whatsapp" || q.art === "zip")
@@ -447,6 +595,28 @@ async function zeigeZugang() {
         catch (err) { setze(fehler, fehlerbox(err.message)); }
       } }, "Entfernen"))));
   zeichne(await api("/api/zugang"));
+  const waKarte = el("section", { class: "karte" });
+  let waTimer = null;
+  async function zeichneWa() {
+    const wa = await api("/api/whatsapp").catch((err) => ({ fehler: err.message }));
+    const zustand = { verbunden: "verbunden ✓", koppeln: "wartet auf Koppeln", getrennt: "getrennt (verbindet neu)", abgemeldet: "abgemeldet — neu koppeln", abgelaufen: "QR abgelaufen — startet neu" };
+    setze(waKarte,
+      el("h2", {}, "WhatsApp-Gruppe"),
+      !wa.eingerichtet ? el("p", { class: "hinweis" }, wa.fehler || "Die Bridge ist auf diesem Server nicht eingerichtet (WA_STORE fehlt).") : [
+        el("div", { class: "status-liste" },
+          el("div", {}, el("span", {}, "Zustand"), el("span", {}, zustand[wa.zustand] || wa.zustand)),
+          wa.nummer ? el("div", {}, el("span", {}, "Nummer"), el("span", {}, `+${wa.nummer}`)) : null,
+          (wa.gruppen || []).map((g) => el("div", {}, el("span", {}, g.name), el("span", {}, `${g.anzahl} Nachrichten${g.letzte ? ` · zuletzt ${datum(g.letzte)}` : ""}`)))),
+        wa.gruppeFehlt ? el("p", { class: "hinweis" }, "⚠ Die Firmennummer ist in keiner passenden Gruppe (WA_GRUPPEN). Bitte zur Gruppe hinzufügen.") : null,
+        wa.qr ? [
+          el("p", {}, "Mit dem Firmen-Handy scannen: WhatsApp → Einstellungen → Verknüpfte Geräte → Gerät hinzufügen."),
+          el("img", { src: `/api/whatsapp/qr.png?t=${Date.now()}`, alt: "QR-Code zum Koppeln", class: "wa-qr" }),
+        ] : null,
+      ]);
+    clearTimeout(waTimer);
+    if (location.hash === "#/zugang" && wa.eingerichtet && wa.zustand !== "verbunden") waTimer = setTimeout(zeichneWa, 5000);
+  }
+  await zeichneWa();
   const email = el("input", { type: "email", id: "neu-email", required: true });
   const name = el("input", { id: "neu-name", placeholder: "optional" });
   const form = el("form", { class: "karte", onsubmit: async (e) => {
@@ -461,7 +631,7 @@ async function zeigeZugang() {
   el("label", { class: "feld", for: "neu-email" }, "E-Mail"), email,
   el("label", { class: "feld", for: "neu-name" }, "Name"), name,
   el("div", { style: "margin-top:14px" }, el("button", { class: "knopf", type: "submit" }, "Freischalten")));
-  setze(app, el("h1", {}, "Zugang"), el("div", { class: "raster" }, form, el("section", { class: "karte" }, el("h2", {}, "Wer hat Zugang"), liste)));
+  setze(app, el("h1", {}, "Zugang"), el("div", { class: "raster" }, el("div", { class: "stapel" }, form, waKarte), el("section", { class: "karte" }, el("h2", {}, "Wer hat Zugang"), liste)));
 }
 
 // ── Routing ─────────────────────────────────────────────────────────────────
