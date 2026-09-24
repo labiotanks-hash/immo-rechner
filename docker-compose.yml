@@ -1,19 +1,45 @@
-# Auf einem kleinen Server (z. B. Hetzner CX22) mit Docker:
-#   cp .env.example .env   # ausfüllen
-#   docker compose up -d --build
-# Caddy holt das HTTPS-Zertifikat für DOMAIN automatisch (DNS muss vorher auf den Server zeigen).
+# A²O Immo-Rechner auf einem kleinen Server (Hetzner CX23: 2 vCPU, 4 GB RAM).
+# Einrichten: deploy/einrichten.sh (legt .env an, startet alles).
+# Von außen erreichbar ist nur Caddy (80/443); App, Bridge und Whisper nur intern.
 services:
-  ankauf:
+  app:
     build: .
     restart: unless-stopped
     env_file: .env
+    environment:
+      WA_STORE: /wa
+      TRANSCRIBE_URL: ${TRANSCRIBE_URL:-http://whisper:9000/v1/audio/transcriptions}
     volumes:
       - daten:/daten
-      # Optional: eure echte FixFlip Pro (index.html + standalone/build.py) — dann rechnet und
-      # baut die App exakt mit euren Dateien. In .env zusätzlich FIXFLIP_DIR=/fixflip-pro setzen.
+      - wa:/wa
+      # Optional: eure echte FixFlip Pro (index.html + standalone/build.py) — in .env FIXFLIP_DIR=/fixflip-pro
       # - ./fixflip-pro:/fixflip-pro:ro
-    expose:
-      - "8080"
+    expose: ["8080"]
+    mem_limit: 1500m
+    depends_on: [bridge]
+
+  # Liest die WhatsApp-Gruppe(n) aus WA_GRUPPEN als verknüpftes Gerät der Firmennummer mit
+  bridge:
+    build: ./bridge
+    restart: unless-stopped
+    environment:
+      WA_GRUPPEN: ${WA_GRUPPEN:-Objekte Immo}
+    volumes:
+      - wa:/store
+    mem_limit: 300m
+
+  # Lokale Spracherkennung (faster-whisper large-v3-turbo, int8)
+  whisper:
+    build: ./whisper
+    restart: unless-stopped
+    environment:
+      WHISPER_MODEL: ${WHISPER_MODEL:-large-v3-turbo}
+      WHISPER_THREADS: "2"
+    volumes:
+      - whisper_modelle:/modelle
+    expose: ["9000"]
+    mem_limit: 2500m
+    cpus: 1.8
 
   caddy:
     image: caddy:2
@@ -21,14 +47,18 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "443:443/udp"
     environment:
       DOMAIN: ${DOMAIN}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
-    depends_on:
-      - ankauf
+      - caddy_config:/config
+    depends_on: [app]
 
 volumes:
   daten:
+  wa:
+  whisper_modelle:
   caddy_data:
+  caddy_config:

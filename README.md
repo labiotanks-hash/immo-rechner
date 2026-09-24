@@ -1,8 +1,8 @@
-# A²O Ankauf — Ankaufskalkulation & FixFlip Pro als Web-App
+# A²O Immo-Rechner — Ankaufskalkulation & FixFlip Pro als Web-App
 
-Die App übernimmt den Ablauf, den ihr bisher im Claude-Chat macht, und stellt ihn auf einer eigenen Subdomain bereit, zum Beispiel `rechner.a2o-architekten.de`. Dahinter steht die Claude API:
+Die App übernimmt den Ablauf, den ihr bisher im Claude-Chat macht, und stellt ihn unter `immo-rechner.a2o-architekten.de` bereit. Dahinter steht die Claude API:
 
-**Unterlagen hochladen** (Exposés, Mappen, Fotos, Notizen, Sprachnachrichten, WhatsApp-Export)
+**Unterlagen hochladen oder aus der WhatsApp-Gruppe „Objekte Immo“ auswählen** (Exposés, Mappen, Fotos, Notizen, Sprachnachrichten)
 → **Claude liest, recherchiert den Markt im Web und rechnet mit FixFlip Pro**
 → **dieselben Dokumente wie im Objektordner:**
 
@@ -29,47 +29,73 @@ Rückfragen wie „rechne zusätzlich mit 950.000 €“ oder „was, wenn die M
   - Sonst nimmt sie die eingebaute Vorlage. Diese enthält denselben Rechenkern, die Bearbeitungsgebühr, die Kompakt-Mappe, Bankvorlage und Verhandlungsgrundlage aus `build.py`.
 - **Hausannahmen:** Sie stehen unter „Einstellungen“ und entsprechen den Projektanweisungen in Claude, also Standardsätzen, Zielmarge, Ampel und Investorenprofil.
 
-## WhatsApp-Gruppe importieren
+## Anmeldung
 
-1. In der Gruppe: **⋮ / Gruppenname → Chat exportieren → Medien anhängen**.
-   - **Android:** Die installierte App (siehe unten) als Ziel wählen. Das Objekt wird mit dem ZIP automatisch angelegt.
-   - **iPhone:** „In Dateien sichern“ wählen, dann in der App unter „Quellen“ das ZIP auswählen. iOS erlaubt Web-Apps kein Teilen-Ziel.
-2. Die App entpackt das ZIP und liest den Chat, iOS- und Android-Format, deutsch und englisch. Sprachnachrichten werden transkribiert, PDFs und Fotos gehen als Dokumente an Claude.
-3. Große Gruppen: Unter „Quellen“ einen **Zeitraum** setzen, dann gehen nur diese Nachrichten samt Anhängen mit.
+Wie bei BauDoc: E-Mail eingeben, Link oder Code aus der Mail, fertig. Die Konten liegen im Supabase-Projekt `hilfezumselberbauen`, eine Selbstregistrierung gibt es nicht.
 
-**App aufs Handy:** Seite in Chrome öffnen → Menü → „Zum Startbildschirm hinzufügen“. Danach steht „A²O Ankauf“ im Teilen-Menü von WhatsApp. Einmal vorher anmelden.
+- **Admins** stehen in `.env` unter `ADMIN_EMAILS`. Sie schalten unter „Zugang“ weitere Personen frei (Team und Partner) und koppeln WhatsApp.
+- **Alle Freigeschalteten sehen alle Objekte.** Wer von der Liste genommen wird, ist sofort abgemeldet.
+- Wer noch kein Supabase-Konto hat: im Supabase-Dashboard unter *Authentication → Users → Invite user* einladen.
+- **Einmalig in Supabase** (Projekt `hilfezumselberbauen` → *Authentication → URL Configuration*): `https://immo-rechner.a2o-architekten.de/**` zu den Redirect-URLs hinzufügen.
+- Auf dem iPhone als Homescreen-App den **Code** aus der Mail eintippen statt den Link zu öffnen, denn der Link öffnet Safari, nicht die App. Dafür muss die Mail-Vorlage „Magic Link“ `{{ .Token }}` enthalten.
 
-Einen Bot, der die Gruppe automatisch mitliest, gibt es bewusst nicht. WhatsApp erlaubt das offiziell nur für Business-Nummern, und inoffizielle Brücken verstoßen gegen die Nutzungsbedingungen. Die Nummer könnte dann gesperrt werden. Der Export dauert zehn Sekunden und ist sicher.
+## WhatsApp-Gruppe „Objekte Immo“
+
+Die Bridge (`bridge/`) hängt als **verknüpftes Gerät** an der Firmennummer, wie WhatsApp Web, und liest mit:
+
+- Gespeichert wird **nur** die Gruppe aus `WA_GRUPPEN`. Andere Chats der Nummer landen nicht auf dem Server.
+- Texte, Standorte, Fotos, PDFs und Sprachnachrichten werden **sofort** heruntergeladen, weil WhatsApp-Links nach einiger Zeit ablaufen. Sprachnachrichten werden gleich im Hintergrund transkribiert.
+- Bearbeitete Nachrichten werden aktualisiert, „für alle gelöschte“ auch hier gelöscht.
+- Die Bridge **kann nichts senden** und hat keinen offenen Port.
+
+In der App auf „Aus „Objekte Immo“ übernehmen“ klicken, einen Zeitraum wählen und die Nachrichten anhaken. Die Auswahl zeigt Fotos, PDFs und Sprachnachrichten mit Transkript. Daraus wird ein neues Objekt, oder die Nachrichten kommen als Quelle ins bestehende.
+
+**Koppeln:** Als Admin „Zugang“ öffnen und den QR-Code mit dem Firmen-Handy scannen (*WhatsApp → Einstellungen → Verknüpfte Geräte → Gerät hinzufügen*). Voraussetzungen und Grenzen:
+
+- Die Firmennummer muss **Mitglied der Gruppe** sein.
+- WhatsApp erlaubt höchstens vier verknüpfte Geräte pro Nummer.
+- Beim Koppeln überträgt WhatsApp einen Teil des Verlaufs. Ältere Medien sind dann oft nicht mehr ladbar, die Auswahl zeigt sie als „nicht mehr ladbar“.
+- Das Handy der Firmennummer muss ab und zu online sein, sonst trennt WhatsApp verknüpfte Geräte nach etwa 14 Tagen.
+
+**Risiko offen gesagt:** Die Bridge nutzt whatsmeow, eine inoffizielle Umsetzung des WhatsApp-Web-Protokolls. Das verstößt gegen die WhatsApp-Nutzungsbedingungen, und WhatsApp kann die Nummer im schlimmsten Fall sperren. Reines Mitlesen ohne Senden fällt erfahrungsgemäß kaum auf, ausschließen lässt sich eine Sperre aber nicht. Die Mitglieder der Gruppe sollten wissen, dass ihre Nachrichten in den Immo-Rechner übernommen werden.
+
+Weiter möglich: Chat-Export als ZIP hochladen (*Chat exportieren → Medien anhängen*). Unter Android geht das auch direkt über „Teilen → Immo-Rechner“.
 
 ## Sprachnachrichten
 
-Die Claude API nimmt kein Audio an. Die App schickt Sprachnachrichten deshalb an einen Whisper-kompatiblen Dienst:
-- **Standard:** Groq mit `whisper-large-v3-turbo`, dasselbe Modell wie lokal auf dem Mac. Nötig ist ein Schlüssel unter console.groq.com.
-- **Alternative:** OpenAI oder ein eigener whisper.cpp-Server.
+Die Claude API nimmt kein Audio an. Die Transkription läuft deshalb **lokal auf dem Server** (`whisper/`): faster-whisper mit `large-v3-turbo`, demselben Modell wie auf dem Mac, als int8 auf der CPU.
 
-Ist `TRANSCRIBE_URL` leer, bekommt Claude nur den Hinweis „Sprachnachricht, nicht transkribiert“. Die Transkripte könnt ihr in der App aufklappen und prüfen.
+- Beim ersten Start lädt Whisper das Modell (ca. 1,6 GB).
+- Auf 2 Kernen braucht eine Minute Sprachnachricht etwa 1–2 Minuten. Das läuft im Hintergrund, sobald die Nachricht in der Gruppe ankommt.
+- Transkripte werden nach Inhalt gespeichert, jede Aufnahme wird nur einmal transkribiert.
 
-## Auf die Subdomain bringen
+Alternativ geht jeder Whisper-kompatible Dienst über `TRANSCRIBE_URL`, zum Beispiel Groq. Dann verlassen die Aufnahmen aber den Server.
 
-Ihr braucht einen kleinen Linux-Server mit Docker, zum Beispiel Hetzner CX22 für ca. 5 €/Monat.
+## Auf den Server bringen (Hetzner CX23)
 
-1. **DNS:** Beim Domain-Anbieter einen A-Record `rechner` auf die IP des Servers anlegen.
-2. **Server einrichten:**
+1. **DNS bei SiteGround:** A-Record `immo-rechner` → IP des Servers.
+2. **Supabase:** Redirect-URL eintragen (siehe *Anmeldung*).
+3. **Hetzner-Konsole → Server → `>_` Console**, als root:
    ```bash
-   git clone <dieses Repo> && cd <repo>/ankauf-app
-   cp .env.example .env      # ANTHROPIC_API_KEY, APP_PASSWORD, SESSION_SECRET, DOMAIN, TRANSCRIBE_* ausfüllen
-   docker compose up -d --build
+   curl -fsSL https://raw.githubusercontent.com/labiotanks-hash/immo-rechner/main/deploy/einrichten.sh | bash
    ```
-   Caddy holt das HTTPS-Zertifikat automatisch. Die Daten liegen im Docker-Volume `daten`.
-3. **Optional, eure echte FixFlip Pro:** Den Ordner `fixflip-pro` mit `index.html` und `standalone/build.py` neben `docker-compose.yml` legen. Dann in `docker-compose.yml` die Zeile `./fixflip-pro:/fixflip-pro:ro` einkommentieren und in `.env` `FIXFLIP_DIR=/fixflip-pro` setzen. Unter „Einstellungen → System“ steht danach „Original“.
+   Das Skript macht Folgendes:
+   - installiert Docker und legt 4 GB Swap an;
+   - fragt **unsichtbar** nach dem Anthropic-Schlüssel und nach den Admin-Adressen und legt `/opt/immo-rechner/.env` an (nur root lesbar);
+   - prüft die DNS und startet App, Bridge, Whisper und Caddy (HTTPS automatisch);
+   - bricht ab, ohne etwas zu ändern, wenn auf 80/443 schon ein anderer Webserver läuft.
 
-Statt eines eigenen Servers geht auch jede Plattform, die ein Dockerfile mit dauerhaftem Volume betreibt, zum Beispiel Render, Railway oder Fly.io. Dort legt ihr die Subdomain als Custom Domain an und setzt beim Domain-Anbieter einen CNAME auf die Plattform. Serverless-Funktionen wie Vercel oder Netlify passen nicht, denn eine Analyse läuft mehrere Minuten.
+   Ein zweiter Aufruf aktualisiert auf den neuesten Stand.
+4. **Hetzner-Backups einschalten.** Auf dem Server liegen die WhatsApp-Kopplung und alle Objekte.
+
+Speicherbedarf: App mit Chromium ca. 1 GB, Whisper ca. 1,5–2,5 GB, Bridge und Caddy wenig. Wird es eng, in der Hetzner-Konsole auf CX33 skalieren.
+
+Optional, eure echte FixFlip Pro: `fixflip-pro/` mit `index.html` und `standalone/build.py` nach `/opt/immo-rechner/app/` legen. Dann in `docker-compose.yml` die Zeile `./fixflip-pro:/fixflip-pro:ro` einkommentieren und in `.env` `FIXFLIP_DIR=/fixflip-pro` setzen.
 
 **Lokal ausprobieren:**
 ```bash
-cd ankauf-app && npm install
-ANTHROPIC_API_KEY=… APP_PASSWORD=test SESSION_SECRET=$(openssl rand -hex 32) npm start
-# → http://localhost:8080
+npm install
+UNSICHER_OHNE_LOGIN=1 ANTHROPIC_API_KEY=… npm start   # → http://localhost:8080, ohne Anmeldung
 ```
 
 ## Kosten
@@ -78,15 +104,18 @@ Claude Opus 5 kostet 5 $ je Million Eingabe-Tokens und 25 $ je Million Ausgabe-T
 
 ## Datenschutz und Sicherheit
 
-- **Anmeldung:** Zugang nur mit Team-Passwort. Die Anmeldung gilt 30 Tage, nach 10 Fehlversuchen wird 15 Minuten gesperrt.
-- **Was an Anthropic geht:** Exposés, Chats und Transkripte laufen zur Verarbeitung über die Anthropic API. PDFs und Bilder liegen dort über die Files API. Beim Löschen eines Objekts werden sie auch bei Anthropic gelöscht. WhatsApp-Verläufe enthalten Daten Dritter, deshalb vorher eure Auftragsverarbeitung prüfen.
-- **Isolierte Dokumente:** Rechner und Kalkulationen laufen im Browser in einer Sandbox, ohne Zugriff auf Anmeldung und API der App.
+- **Anmeldung:** per E-Mail-Link über Supabase, dazu eine eigene Zugangsliste auf dem Server. Die Sitzung gilt 30 Tage.
+- **Was an Anthropic geht:** Exposés, ausgewählte Chats und Transkripte laufen zur Verarbeitung über die Anthropic API. PDFs und Bilder liegen dort über die Files API. Beim Löschen eines Objekts werden sie auch bei Anthropic gelöscht.
+- **Was auf dem Server bleibt:** WhatsApp-Nachrichten der Gruppe und die Sprachaufnahmen. Die Transkription läuft lokal. An Claude geht nur, was ihr für ein Objekt auswählt.
+- **Daten Dritter:** WhatsApp-Verläufe enthalten Daten Dritter. Deshalb die Auftragsverarbeitung mit Anthropic prüfen und die Gruppe informieren.
+- **Isolierte Dokumente:** Rechner, Kalkulationen und WhatsApp-Anhänge laufen im Browser in einer Sandbox, ohne Zugriff auf Anmeldung und API der App.
 - **Keine Geheimnisse ins Repo:** `.env`, API-Schlüssel und eure FixFlip-Pro-Quelldateien gehören nicht hinein. `.gitignore` schließt `.env`, `daten/` und `fixflip-pro/` aus.
 
 ## Entwicklung
 
 ```bash
-npm test     # Rechenkern gegen Referenzzahlen, WhatsApp-Parser, ganzer Lauf gegen eine nachgebaute Claude-API
+npm test                      # Rechenkern, WhatsApp-Parser und -Live-Import, Anmeldung, ganzer Lauf gegen eine nachgebaute Claude-API
+cd bridge && go test ./...    # Bridge: Speicher, Texte, Dateinamen
 ```
 
 | Datei | Aufgabe |
@@ -95,6 +124,10 @@ npm test     # Rechenkern gegen Referenzzahlen, WhatsApp-Parser, ganzer Lauf geg
 | `lib/engine.js` | echte `index.html` bevorzugen, sonst Port |
 | `lib/agent.js`, `lib/prompt.js`, `lib/werkzeuge.js` | Claude-Lauf, Systemprompt, Werkzeuge |
 | `lib/ingest.js`, `lib/whatsapp.js`, `lib/transcribe.js` | Eingänge |
+| `lib/whatsapp-live.js`, `bridge/` | WhatsApp-Gruppe live |
+| `lib/auth.js`, `lib/zugang.js` | Anmeldung (Supabase) und Zugangsliste |
+| `whisper/` | lokale Spracherkennung |
+| `deploy/einrichten.sh`, `docker-compose.yml`, `Caddyfile` | Server |
 | `lib/dokumente.js`, `lib/render/*` | Ankaufskalkulation, Rechner, PDF |
 | `vorlagen/rechner.html` | eingebaute Rechner-Vorlage |
 | `server.js`, `public/*` | Web-App |

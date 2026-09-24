@@ -3,3 +3,7 @@ daten
 .env
 *.log
 test
+bridge
+whisper
+deploy
+.git

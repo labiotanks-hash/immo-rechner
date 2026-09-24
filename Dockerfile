@@ -15,9 +15,10 @@ COPY public ./public
 COPY vorlagen ./vorlagen
 
 ENV NODE_ENV=production PORT=8080 DATA_DIR=/daten CHROME_PATH=/usr/bin/chromium
-RUN useradd --system --uid 10001 --home /daten app && mkdir -p /daten && chown app /daten
+ENV WA_STORE=/wa
+RUN useradd --system --uid 10001 --home /daten app && mkdir -p /daten /wa && chown app /daten /wa
 USER app
 VOLUME /daten
 EXPOSE 8080
 HEALTHCHECK --interval=60s --timeout=5s CMD node -e "fetch('http://127.0.0.1:8080/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-CMD ["node", "server.js"]
+CMD ["node", "--disable-warning=ExperimentalWarning", "server.js"]

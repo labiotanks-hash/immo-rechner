@@ -1,9 +1,13 @@
 {$DOMAIN} {
 	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
 	request_body {
 		max_size 300MB
 	}
-	reverse_proxy ankauf:8080 {
+	reverse_proxy app:8080 {
 		# Fortschritt kommt als Server-Sent Events — nicht puffern
 		flush_interval -1
 	}
