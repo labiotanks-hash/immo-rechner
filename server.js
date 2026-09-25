@@ -21,6 +21,7 @@ import { claude } from "./lib/claude.js";
 import {
   angemeldet, nurAngemeldet, nurAdmin, emailAusSupabaseToken, setzeSitzung, beendeSitzung, loginGesperrt, loginFehlversuch,
 } from "./lib/auth.js";
+import { ladeApiSchluessel, apiSchluesselStatus, speichereApiSchluessel } from "./lib/geheim.js";
 import { ladeZugang, darfRein, zugangsliste, fuegeHinzu, entferne } from "./lib/zugang.js";
 import { waStatus, waNachrichten, waMedium, qrPfad, exportiereAlsZip, starteHintergrund } from "./lib/whatsapp-live.js";
 
@@ -38,6 +39,7 @@ if (config.ohneLogin) {
   }
 }
 await ladeZugang();
+await ladeApiSchluessel();
 
 const app = express();
 app.set("trust proxy", 1);
@@ -99,7 +101,7 @@ app.get("/api/status", asyncRoute(async (req, res) => {
   res.json({
     modell: config.model, effort: config.effort, rechenkern: engine().quelle,
     transkription: transkriptionAktiv(), originalBuild: originalBuildVorhanden(), pdf: Boolean(chromePfad()),
-    apiKey: Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN),
+    apiKey: apiSchluesselStatus().gesetzt,
   });
 }));
 
@@ -226,6 +228,11 @@ app.get("/api/objekte/:id/zip", asyncRoute(async (req, res) => {
 // ── Einstellungen ───────────────────────────────────────────────────────────
 app.get("/api/einstellungen", asyncRoute(async (req, res) => res.json(await ladeEinstellungen())));
 app.put("/api/einstellungen", asyncRoute(async (req, res) => res.json(await speichereEinstellungen(req.body || {}))));
+
+app.get("/api/api-schluessel", nurAdmin, (req, res) => res.json(apiSchluesselStatus()));
+app.put("/api/api-schluessel", nurAdmin, asyncRoute(async (req, res) => {
+  res.json(await speichereApiSchluessel(req.body?.schluessel));
+}));
 
 // ── WhatsApp-Gruppe live (Bridge) ──────────────────────────────────────────
 app.get("/api/whatsapp", asyncRoute(async (req, res) => {

@@ -117,3 +117,5 @@ select { width: 100%; padding: 8px 10px; border: 1px solid var(--linie); border-
 .wa-fuss { margin-top: 8px; }
 .wa-qr { width: 100%; max-width: 280px; image-rendering: pixelated; border: 8px solid #fff; border-radius: 8px; }
 .knopf.klein, .leise.klein { font-size: 12px; padding: 3px 8px; }
+.karte.hervor { outline: 2px solid var(--akzent); }
+.okbox { background: var(--akzent-hell); border-radius: 8px; padding: 8px 12px; margin: 8px 0; font-size: 14px; }

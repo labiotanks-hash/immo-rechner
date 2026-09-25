@@ -153,7 +153,12 @@ function zeigeCode(adresse) {
 
 // ── Objektliste ─────────────────────────────────────────────────────────────
 async function zeigeListe() {
-  const [objekte, wa] = await Promise.all([api("/api/objekte"), api("/api/whatsapp").catch(() => ({}))]);
+  const [objekte, wa, st] = await Promise.all([api("/api/objekte"), api("/api/whatsapp").catch(() => ({})), api("/api/status").catch(() => ({}))]);
+  const ohneSchluessel = st.apiKey === false
+    ? el("div", { class: "fehlerbox", role: "alert" }, ich?.admin
+      ? ["Noch kein Anthropic-API-Schlüssel eingetragen. ", el("a", { href: "#/einstellungen" }, "Jetzt unter Einstellungen eintragen →")]
+      : "Die App ist noch nicht fertig eingerichtet (API-Schlüssel fehlt). Bitte bei A²O melden.")
+    : null;
   const name = el("input", { type: "text", id: "neuName", placeholder: "z. B. Musterstraße 1, Musterstadt" });
   const notiz = el("textarea", { id: "neuNotiz", placeholder: "Was wollt ihr wissen? z. B. „Einstand über die Bank 0,9–1,0 Mio — was bleibt bei Aufteilung, was bei Globalverkauf? Bankgespräch morgen.“" });
   const neu = el("form", { class: "karte", onsubmit: async (e) => {
@@ -197,6 +202,7 @@ async function zeigeListe() {
   }
 
   setze(app, 
+    ohneSchluessel,
     el("h1", {}, "Objekte"),
     el("p", { class: "unter" }, "Exposés, Mappen, WhatsApp-Verläufe und Sprachnachrichten hochladen — Claude recherchiert den Markt, rechnet mit FixFlip Pro und erstellt Ankaufskalkulation und Rechner."),
     el("div", { class: "raster" }, el("div", { class: "karte" }, el("h2", {}, "Alle Objekte"), liste), el("div", { class: "stapel" }, waKarte, neu)));
@@ -579,7 +585,36 @@ async function zeigeEinstellungen() {
     el("div", {}, el("span", {}, "Rechner über eure build.py"), ja(s.originalBuild)),
     el("div", {}, el("span", {}, "Sprachnachrichten transkribieren"), ja(s.transkription)),
     el("div", {}, el("span", {}, "PDF-Erzeugung"), ja(s.pdf)));
-  setze(app, el("h1", {}, "Einstellungen"), el("div", { class: "raster" }, form, statusKarte));
+  let schluesselKarte = null;
+  if (ich?.admin) {
+    const k = await api("/api/api-schluessel");
+    const eingabe = el("input", { type: "password", id: "api-schluessel", autocomplete: "off", placeholder: "sk-ant-…" });
+    const info = el("div");
+    const knopf = el("button", { class: "knopf", type: "submit" }, "Prüfen und speichern");
+    schluesselKarte = el("form", { class: `karte${k.gesetzt ? "" : " hervor"}`, onsubmit: async (ev) => {
+      ev.preventDefault();
+      setze(info);
+      knopf.disabled = true;
+      knopf.textContent = "Prüfe …";
+      try {
+        const r = await api("/api/api-schluessel", { method: "PUT", body: { schluessel: eingabe.value } });
+        eingabe.value = "";
+        setze(info, el("div", { class: "okbox" }, `Gespeichert ✓ (endet auf …${r.ende}). Claude ist startklar.`));
+      } catch (err) { setze(info, fehlerbox(err.message)); }
+      knopf.disabled = false;
+      knopf.textContent = "Prüfen und speichern";
+    } },
+    el("h2", {}, "Anthropic-API-Schlüssel"),
+    k.ausEnv ? el("p", { class: "hinweis" }, `Steht in der .env auf dem Server (endet auf …${k.ende || "?"}).`) : [
+      el("p", { class: "hinweis" }, k.gesetzt
+        ? `Gesetzt ✓ (endet auf …${k.ende}). Zum Ersetzen einen neuen einfügen.`
+        : "Einmal einfügen — aus platform.claude.com → API Keys. Er bleibt nur auf dem Server und wird nicht wieder angezeigt."),
+      info,
+      el("label", { class: "feld", for: "api-schluessel" }, "Schlüssel"), eingabe,
+      el("div", { style: "margin-top:12px" }, knopf),
+    ]);
+  }
+  setze(app, el("h1", {}, "Einstellungen"), el("div", { class: "raster" }, form, el("div", { class: "stapel" }, schluesselKarte, statusKarte)));
 }
 
 // ── Zugang (nur Admins) ─────────────────────────────────────────────────────

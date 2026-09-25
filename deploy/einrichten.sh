@@ -4,6 +4,12 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/labiotanks-hash/immo-rechner/main/deploy/einrichten.sh | bash
 #
+# Ohne Terminal (neuer Server, Feld „Cloud config“ bei Hetzner):
+#   #cloud-config
+#   runcmd:
+#     - 'curl -fsSL https://raw.githubusercontent.com/labiotanks-hash/immo-rechner/main/deploy/einrichten.sh | ADMIN_EMAILS=du@beispiel.de bash > /var/log/immo-rechner.log 2>&1'
+#   Den Anthropic-Schlüssel trägt dann ein Admin nach dem ersten Login unter „Einstellungen“ ein.
+#
 # Mehrfach ausführbar: beim zweiten Mal holt es nur den neuen Stand und startet neu.
 # Geheimnisse landen ausschließlich in /opt/immo-rechner/.env (chmod 600).
 set -euo pipefail
@@ -17,6 +23,8 @@ DOMAIN_STANDARD=immo-rechner.a2o-architekten.de
 schritt() { printf '\n\033[1;34m▶ %s\033[0m\n' "$*"; }
 hinweis() { printf '\033[0;33m  %s\033[0m\n' "$*"; }
 abbruch() { printf '\n\033[1;31m✖ %s\033[0m\n' "$*" >&2; exit 1; }
+INTERAKTIV=0
+if [ "${NICHT_INTERAKTIV:-0}" != 1 ] && { : </dev/tty; } 2>/dev/null; then INTERAKTIV=1; fi
 frage() { # frage VAR "Text" [geheim]
   local antwort
   if [ "${3:-}" = geheim ]; then read -rsp "  $2: " antwort </dev/tty; echo; else read -rp "  $2: " antwort </dev/tty; fi
@@ -41,12 +49,13 @@ fi
 
 schritt "Pakete (Docker, Git)"
 export DEBIAN_FRONTEND=noninteractive
+APT="apt-get -y -q -o DPkg::Lock::Timeout=900"  # beim ersten Start läuft oft noch ein automatisches Update
 if ! command -v docker >/dev/null || ! docker compose version >/dev/null 2>&1; then
-  apt-get update -q
-  apt-get install -y -q docker.io docker-compose-v2 git ca-certificates curl
+  $APT update
+  $APT install docker.io docker-compose-v2 git ca-certificates curl
   systemctl enable --now docker
 else
-  command -v git >/dev/null || { apt-get update -q; apt-get install -y -q git; }
+  command -v git >/dev/null || { $APT update; $APT install git; }
   hinweis "Docker ist schon da: $(docker --version)"
 fi
 
@@ -73,14 +82,17 @@ hinweis "Stand: $(git -C "$BASIS/app" log -1 --format='%h %s')"
 
 schritt "Einstellungen in $ENVDATEI"
 touch "$ENVDATEI" && chmod 600 "$ENVDATEI"
-if ! env_hat ANTHROPIC_API_KEY; then
-  frage KEY "Anthropic-API-Schlüssel einfügen (unsichtbar)" geheim
-  [ -n "$KEY" ] || abbruch "Ohne API-Schlüssel geht es nicht."
-  env_setze ANTHROPIC_API_KEY "$KEY"; unset KEY
+if ! env_hat ANTHROPIC_API_KEY && [ "$INTERAKTIV" = 1 ]; then
+  frage KEY "Anthropic-API-Schlüssel einfügen (unsichtbar; leer lassen = später in der App unter Einstellungen)" geheim
+  [ -n "$KEY" ] && env_setze ANTHROPIC_API_KEY "$KEY"
+  unset KEY
 fi
 if ! env_hat ADMIN_EMAILS; then
-  frage ADMINS "E-Mail-Adresse(n) der Admins, Komma-getrennt (wie beim BauDoc-Login)"
-  [ -n "$ADMINS" ] || abbruch "Mindestens eine Admin-Adresse nötig."
+  ADMINS="${ADMIN_EMAILS:-}"
+  if [ -z "$ADMINS" ] && [ "$INTERAKTIV" = 1 ]; then
+    frage ADMINS "E-Mail-Adresse(n) der Admins, Komma-getrennt (wie beim BauDoc-Login)"
+  fi
+  [ -n "$ADMINS" ] || abbruch "Mindestens eine Admin-Adresse nötig (ADMIN_EMAILS=…)."
   env_setze ADMIN_EMAILS "$(echo "$ADMINS" | tr -d ' ' | tr 'A-Z' 'a-z')"
 fi
 env_setze SESSION_SECRET "$(openssl rand -hex 32)"
@@ -115,6 +127,7 @@ docker compose ps --format 'table {{.Service}}\t{{.Status}}'
 cat <<TEXT
 
   1. https://$DOMAIN öffnen und mit deiner E-Mail anmelden (Link/Code kommt per Mail).
+     Fehlt der Anthropic-Schlüssel noch: Einstellungen → „Anthropic-API-Schlüssel“ einfügen.
   2. Oben „Zugang“ → QR-Code mit dem Firmen-Handy scannen:
      WhatsApp → Einstellungen → Verknüpfte Geräte → Gerät hinzufügen.
   3. Whisper lädt beim ersten Start das Sprachmodell (~1,6 GB), das dauert ein paar Minuten:
