@@ -9,4 +9,4 @@ packages:
   - git
 runcmd:
   - systemctl enable --now docker
-  - 'curl -fsSL https://raw.githubusercontent.com/labiotanks-hash/immo-rechner/main/deploy/einrichten.sh | ADMIN_EMAILS=elias.calva@a2o-architekten.de bash > /var/log/immo-rechner.log 2>&1'
+  - 'curl -fsSL https://raw.githubusercontent.com/labiotanks-hash/immo-rechner/main/deploy/einrichten.sh | ADMIN_EMAILS=admin@example.de bash > /var/log/immo-rechner.log 2>&1'
