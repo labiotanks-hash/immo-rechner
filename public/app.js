@@ -615,7 +615,48 @@ async function zeigeEinstellungen() {
       el("div", { style: "margin-top:12px" }, knopf),
     ]);
   }
-  setze(app, el("h1", {}, "Einstellungen"), el("div", { class: "raster" }, form, el("div", { class: "stapel" }, schluesselKarte, statusKarte)));
+  const updateKarte = ich?.admin ? await aktualisierungKarte() : null;
+  setze(app, el("h1", {}, "Einstellungen"), el("div", { class: "raster" }, form, el("div", { class: "stapel" }, schluesselKarte, statusKarte, updateKarte)));
+}
+
+// ── Aktualisierung auf Befehl (nur Admins) ─────────────────────────────────
+const ERGEBNIS = { aktuell: "aktuell ✓", aktualisiert: "aktualisiert ✓", verschoben: "verschoben", zurueckgerollt: "zurückgerollt ⚠", fehler: "Fehler ⚠" };
+
+async function aktualisierungKarte() {
+  const a = await api("/api/aktualisierung").catch(() => ({ moeglich: false }));
+  if (!a.moeglich) return null;
+  const zeile = el("div", { class: "hinweis" });
+  const zeigeLetzten = (l) => setze(zeile, l
+    ? `Zuletzt ${datum(l.zeit)}: ${ERGEBNIS[l.ergebnis] || l.ergebnis} — ${l.meldung}`
+    : "Noch nicht gesucht.");
+  zeigeLetzten(a.letzter);
+  const knopf = el("button", { class: "knopf zweit", type: "button", onclick: async () => {
+    knopf.disabled = true;
+    const seit = Date.now();
+    try { await api("/api/aktualisierung", { method: "POST" }); }
+    catch (err) { setze(zeile, fehlerbox(err.message)); knopf.disabled = false; return; }
+    setze(zeile, "Suche nach Updates … (kann bei einem neuen Stand einige Minuten dauern; die App startet dabei kurz neu)");
+    // Bis das Server-Skript sein Ergebnis zurückschreibt; zwischendurch ist die App beim Neustart kurz weg
+    while (Date.now() - seit < 30 * 60 * 1000) {
+      await new Promise((r) => setTimeout(r, 5000));
+      try {
+        const s = await api("/api/aktualisierung");
+        if (s.letzter && Date.parse(s.letzter.zeit) >= seit - 2000) {
+          zeigeLetzten(s.letzter);
+          knopf.disabled = false;
+          if (s.letzter.ergebnis === "aktualisiert") setTimeout(() => location.reload(), 2500);
+          return;
+        }
+      } catch { setze(zeile, "App startet neu …"); }
+    }
+    setze(zeile, "Keine Rückmeldung vom Server — bitte später noch einmal schauen.");
+    knopf.disabled = false;
+  } }, "Nach Updates suchen");
+  return el("section", { class: "karte" },
+    el("h2", {}, "Aktualisierung"),
+    el("p", { class: "hinweis" }, `Programmstand: ${a.stand || "unbekannt"}. Neue Stände kommen von GitHub und werden nur auf Knopfdruck eingespielt — nie während einer laufenden Analyse. Startet ein neuer Stand nicht sauber, läuft automatisch der alte weiter.`),
+    zeile,
+    el("div", { style: "margin-top:12px" }, knopf));
 }
 
 // ── Zugang (nur Admins) ─────────────────────────────────────────────────────

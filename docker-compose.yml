@@ -11,10 +11,13 @@ services:
     env_file: .env
     environment:
       WA_STORE: /wa
+      AUFTRAG_DIR: /auftrag
       TRANSCRIBE_URL: ${TRANSCRIBE_URL:-http://whisper:9000/v1/audio/transcriptions}
     volumes:
       - daten:/daten
       - wa:/wa
+      # „Nach Updates suchen“: Auftrag an den Server (deploy/aktualisieren.sh über systemd)
+      - ${UPDATE_ORDNER:-/opt/immo-rechner/auftrag}:/auftrag
       # Optional: eure echte FixFlip Pro (index.html + standalone/build.py) — in .env FIXFLIP_DIR=/fixflip-pro
       # - ./fixflip-pro:/fixflip-pro:ro
     expose: ["8080"]

@@ -118,6 +118,8 @@ else
   hinweis "  Caddy holt das HTTPS-Zertifikat automatisch, sobald der Eintrag gilt."
 fi
 
+mkdir -p "$BASIS/auftrag" && chown 10001:10001 "$BASIS/auftrag" && chmod 755 "$BASIS/auftrag"
+
 schritt "Bauen und starten (beim ersten Mal 5–10 Minuten)"
 cd "$BASIS/app"
 export STAND="$(git log -1 --format='%h · %cd' --date=format:'%d.%m.%Y %H:%M')"
@@ -127,7 +129,7 @@ git rev-parse HEAD > "$BASIS/stand-ok"
 rm -f "$BASIS/stand-fehler"
 docker image prune -f >/dev/null
 
-schritt "Automatische Aktualisierung (alle 10 Minuten von GitHub)"
+schritt "Aktualisierung auf Befehl (Knopf „Nach Updates suchen“ in der App)"
 cat > /etc/systemd/system/immo-rechner-update.service <<UNIT
 [Unit]
 Description=Immo-Rechner: neuen Stand von GitHub holen und einspielen
@@ -140,21 +142,23 @@ Environment=ZWEIG=$ZWEIG
 ExecStart=/bin/bash $BASIS/app/deploy/aktualisieren.sh
 TimeoutStartSec=45min
 UNIT
-cat > /etc/systemd/system/immo-rechner-update.timer <<'UNIT'
+cat > /etc/systemd/system/immo-rechner-update.path <<UNIT
 [Unit]
-Description=Immo-Rechner: alle 10 Minuten nach Updates schauen
+Description=Immo-Rechner: wartet auf „Nach Updates suchen“ aus der App
 
-[Timer]
-OnBootSec=5min
-OnUnitInactiveSec=10min
-RandomizedDelaySec=60
+[Path]
+PathExists=$BASIS/auftrag/aktualisieren
+Unit=immo-rechner-update.service
 
 [Install]
-WantedBy=timers.target
+WantedBy=multi-user.target
 UNIT
+# frühere Variante mit 10-Minuten-Timer abschalten
+systemctl disable --now immo-rechner-update.timer >/dev/null 2>&1 || true
+rm -f /etc/systemd/system/immo-rechner-update.timer
 systemctl daemon-reload
-systemctl enable --now immo-rechner-update.timer >/dev/null
-hinweis "Aktiv: $(systemctl is-active immo-rechner-update.timer)"
+systemctl enable --now immo-rechner-update.path >/dev/null
+hinweis "Wartet auf Knopfdruck: $(systemctl is-active immo-rechner-update.path)"
 
 schritt "Fertig"
 docker compose ps --format 'table {{.Service}}\t{{.Status}}'
@@ -167,6 +171,6 @@ cat <<TEXT
   3. Whisper lädt beim ersten Start das Sprachmodell (~1,6 GB), das dauert ein paar Minuten:
      docker compose -f $BASIS/app/docker-compose.yml logs -f whisper
 
-  Aktualisieren: passiert automatisch alle 10 Minuten (journalctl -u immo-rechner-update).
+  Aktualisieren: in der App unter Einstellungen → System → „Nach Updates suchen“.
   Logs:          cd $BASIS/app && docker compose logs -f app bridge
 TEXT
