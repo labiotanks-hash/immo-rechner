@@ -15,6 +15,9 @@ COPY public ./public
 COPY vorlagen ./vorlagen
 
 ENV NODE_ENV=production PORT=8080 DATA_DIR=/daten CHROME_PATH=/usr/bin/chromium
+# Git-Stand, den das Update-Skript mitgibt — erscheint unter Einstellungen → System
+ARG STAND=""
+ENV STAND=$STAND
 ENV WA_STORE=/wa
 RUN useradd --system --uid 10001 --home /daten app && mkdir -p /daten /wa && chown app /daten /wa
 USER app

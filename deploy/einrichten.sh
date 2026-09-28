@@ -120,9 +120,41 @@ fi
 
 schritt "Bauen und starten (beim ersten Mal 5–10 Minuten)"
 cd "$BASIS/app"
+export STAND="$(git log -1 --format='%h · %cd' --date=format:'%d.%m.%Y %H:%M')"
 docker compose build --pull
 docker compose up -d --remove-orphans
+git rev-parse HEAD > "$BASIS/stand-ok"
+rm -f "$BASIS/stand-fehler"
 docker image prune -f >/dev/null
+
+schritt "Automatische Aktualisierung (alle 10 Minuten von GitHub)"
+cat > /etc/systemd/system/immo-rechner-update.service <<UNIT
+[Unit]
+Description=Immo-Rechner: neuen Stand von GitHub holen und einspielen
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=ZWEIG=$ZWEIG
+ExecStart=/bin/bash $BASIS/app/deploy/aktualisieren.sh
+TimeoutStartSec=45min
+UNIT
+cat > /etc/systemd/system/immo-rechner-update.timer <<'UNIT'
+[Unit]
+Description=Immo-Rechner: alle 10 Minuten nach Updates schauen
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=10min
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now immo-rechner-update.timer >/dev/null
+hinweis "Aktiv: $(systemctl is-active immo-rechner-update.timer)"
 
 schritt "Fertig"
 docker compose ps --format 'table {{.Service}}\t{{.Status}}'
@@ -135,6 +167,6 @@ cat <<TEXT
   3. Whisper lädt beim ersten Start das Sprachmodell (~1,6 GB), das dauert ein paar Minuten:
      docker compose -f $BASIS/app/docker-compose.yml logs -f whisper
 
-  Aktualisieren: dieses Skript noch einmal ausführen.
+  Aktualisieren: passiert automatisch alle 10 Minuten (journalctl -u immo-rechner-update).
   Logs:          cd $BASIS/app && docker compose logs -f app bridge
 TEXT

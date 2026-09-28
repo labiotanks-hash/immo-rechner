@@ -584,7 +584,8 @@ async function zeigeEinstellungen() {
     el("div", {}, el("span", {}, "Rechenkern"), el("span", {}, s.rechenkern === "original" ? "FixFlip Pro index.html (Original)" : "eingebauter Port")),
     el("div", {}, el("span", {}, "Rechner über eure build.py"), ja(s.originalBuild)),
     el("div", {}, el("span", {}, "Sprachnachrichten transkribieren"), ja(s.transkription)),
-    el("div", {}, el("span", {}, "PDF-Erzeugung"), ja(s.pdf)));
+    el("div", {}, el("span", {}, "PDF-Erzeugung"), ja(s.pdf)),
+    s.stand ? el("div", {}, el("span", {}, "Programmstand"), el("span", {}, s.stand)) : null);
   let schluesselKarte = null;
   if (ich?.admin) {
     const k = await api("/api/api-schluessel");

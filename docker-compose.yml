@@ -3,7 +3,10 @@
 # Von außen erreichbar ist nur Caddy (80/443); App, Bridge und Whisper nur intern.
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        STAND: ${STAND:-}
     restart: unless-stopped
     env_file: .env
     environment:

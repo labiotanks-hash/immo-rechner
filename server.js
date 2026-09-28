@@ -11,7 +11,7 @@ import {
   listeObjekte, neuesObjekt, ladeMeta, aendereMeta, loescheObjekt, objektPfad, kanal,
 } from "./lib/store.js";
 import { nimmDateiAuf } from "./lib/ingest.js";
-import { starteLauf, laeuft, gespraech, markiereUnterbrocheneLaeufe } from "./lib/agent.js";
+import { starteLauf, laeuft, anzahlLaufend, gespraech, markiereUnterbrocheneLaeufe } from "./lib/agent.js";
 import { ladeEinstellungen, speichereEinstellungen } from "./lib/einstellungen.js";
 import { engine } from "./lib/engine.js";
 import { transkriptionAktiv } from "./lib/transcribe.js";
@@ -61,6 +61,13 @@ const dateiname = (f) => Buffer.from(f.originalname, "latin1").toString("utf8");
 const asyncRoute = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 // ── Anmeldung ───────────────────────────────────────────────────────────────
+// Nur für das Update-Skript auf dem Server (docker compose exec … 127.0.0.1): läuft gerade eine Analyse?
+app.get("/intern/zustand", (req, res) => {
+  const ip = req.socket.remoteAddress || "";
+  if (!["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(ip) || req.headers["x-forwarded-for"]) return res.status(404).end();
+  res.json({ laufend: anzahlLaufend(), stand: process.env.STAND || null });
+});
+
 // Für den Browser: womit er sich bei Supabase meldet (alles öffentliche Werte)
 app.get("/api/konfig", (req, res) => {
   res.json({ supabaseUrl: config.supabaseUrl, supabaseKey: config.supabaseKey, ohneLogin: config.ohneLogin });
@@ -102,6 +109,7 @@ app.get("/api/status", asyncRoute(async (req, res) => {
     modell: config.model, effort: config.effort, rechenkern: engine().quelle,
     transkription: transkriptionAktiv(), originalBuild: originalBuildVorhanden(), pdf: Boolean(chromePfad()),
     apiKey: apiSchluesselStatus().gesetzt,
+    stand: process.env.STAND || null,
   });
 }));
 
