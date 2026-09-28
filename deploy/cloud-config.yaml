@@ -1,0 +1,12 @@
+#cloud-config
+# Bei Hetzner beim Anlegen eines neuen Servers ins Feld „Cloud config“ einfügen.
+# Der Server richtet sich dann selbst ein (ca. 10–15 Minuten). Protokoll: /var/log/immo-rechner.log
+# ADMIN_EMAILS anpassen; den Anthropic-Schlüssel trägt der Admin danach in der App ein.
+package_update: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - git
+runcmd:
+  - systemctl enable --now docker
+  - 'curl -fsSL https://raw.githubusercontent.com/labiotanks-hash/immo-rechner/main/deploy/einrichten.sh | ADMIN_EMAILS=elias.calva@a2o-architekten.de bash > /var/log/immo-rechner.log 2>&1'

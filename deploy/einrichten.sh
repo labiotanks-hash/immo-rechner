@@ -4,10 +4,7 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/labiotanks-hash/immo-rechner/main/deploy/einrichten.sh | bash
 #
-# Ohne Terminal (neuer Server, Feld „Cloud config“ bei Hetzner):
-#   #cloud-config
-#   runcmd:
-#     - 'curl -fsSL https://raw.githubusercontent.com/labiotanks-hash/immo-rechner/main/deploy/einrichten.sh | ADMIN_EMAILS=du@beispiel.de bash > /var/log/immo-rechner.log 2>&1'
+# Ohne Terminal (neuer Server, Feld „Cloud config“ bei Hetzner) — siehe deploy/cloud-config.yaml
 #   Den Anthropic-Schlüssel trägt dann ein Admin nach dem ersten Login unter „Einstellungen“ ein.
 #
 # Mehrfach ausführbar: beim zweiten Mal holt es nur den neuen Stand und startet neu.
@@ -38,6 +35,7 @@ env_setze() { # nur ergänzen, nie überschreiben
 }
 
 [ "$(id -u)" = 0 ] || abbruch "Bitte als root ausführen."
+export HOME="${HOME:-/root}"  # unter cloud-init nicht immer gesetzt
 . /etc/os-release
 [ "${ID:-}" = ubuntu ] || [ "${ID:-}" = debian ] || abbruch "Getestet für Ubuntu/Debian, gefunden: ${PRETTY_NAME:-unbekannt}."
 
@@ -49,13 +47,17 @@ fi
 
 schritt "Pakete (Docker, Git)"
 export DEBIAN_FRONTEND=noninteractive
-APT="apt-get -y -q -o DPkg::Lock::Timeout=900"  # beim ersten Start läuft oft noch ein automatisches Update
+APT="apt-get -y -q -o DPkg::Lock::Timeout=900"
+apt_mit_geduld() { # beim ersten Start läuft oft noch ein automatisches Update
+  for _ in $(seq 1 20); do $APT "$@" && return 0; sleep 15; done
+  abbruch "apt-get $* klappt nicht."
+}
 if ! command -v docker >/dev/null || ! docker compose version >/dev/null 2>&1; then
-  $APT update
-  $APT install docker.io docker-compose-v2 git ca-certificates curl
+  apt_mit_geduld update
+  apt_mit_geduld install docker.io docker-compose-v2 git ca-certificates curl
   systemctl enable --now docker
 else
-  command -v git >/dev/null || { $APT update; $APT install git; }
+  command -v git >/dev/null || { apt_mit_geduld update; apt_mit_geduld install git; }
   hinweis "Docker ist schon da: $(docker --version)"
 fi
 
